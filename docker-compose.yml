@@ -1,0 +1,199 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Red interna: todos los servicios se comunican a través de acceso-net.
+# Solo el puerto 443 del Nginx queda expuesto al host (Req 9.1, 9.4, 9.6).
+# ──────────────────────────────────────────────────────────────────────────────
+
+networks:
+  acceso-net:
+    driver: bridge
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Volumen externo: los datos de PostgreSQL sobreviven al recrear el contenedor
+# (Req 9.4). Crear previamente con: docker volume create postgres-data
+# ──────────────────────────────────────────────────────────────────────────────
+
+volumes:
+  postgres-data:
+    external: true
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Servicios
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Base de datos ────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: on-failure:3
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-acceso_db}
+      POSTGRES_USER: ${POSTGRES_USER:-acceso_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    networks:
+      - acceso-net
+    # Puerto 5432 NO expuesto al host; solo accesible dentro de acceso-net.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-acceso_user} -d ${POSTGRES_DB:-acceso_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── Servicio_Autenticacion ───────────────────────────────────────────────────
+  servicio-autenticacion:
+    build:
+      context: ./services/auth
+    container_name: servicio-autenticacion
+    restart: on-failure:3
+    environment:
+      PORT: "5001"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://acceso_user:changeme@postgres:5432/acceso_db}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production}
+      JWT_EXPIRY_HOURS: ${JWT_EXPIRY_HOURS:-8}
+      BCRYPT_COST: ${BCRYPT_COST:-12}
+    networks:
+      - acceso-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5001/auth/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── Servicio_Acceso ──────────────────────────────────────────────────────────
+  servicio-acceso:
+    build:
+      context: ./services/access
+    container_name: servicio-acceso
+    restart: on-failure:3
+    environment:
+      PORT: "5002"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://acceso_user:changeme@postgres:5432/acceso_db}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production}
+      HEARTBEAT_TIMEOUT_S: ${HEARTBEAT_TIMEOUT_S:-120}
+      HEARTBEAT_CHECK_INTERVAL_S: ${HEARTBEAT_CHECK_INTERVAL_S:-30}
+    networks:
+      - acceso-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5002/access/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── Servicio_Gestion ─────────────────────────────────────────────────────────
+  servicio-gestion:
+    build:
+      context: ./services/management
+    container_name: servicio-gestion
+    restart: on-failure:3
+    environment:
+      PORT: "5003"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://acceso_user:changeme@postgres:5432/acceso_db}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production}
+      BCRYPT_COST: ${BCRYPT_COST:-12}
+    networks:
+      - acceso-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5003/management/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── Servicio_Reportes ────────────────────────────────────────────────────────
+  servicio-reportes:
+    build:
+      context: ./services/reports
+    container_name: servicio-reportes
+    restart: on-failure:3
+    environment:
+      PORT: "5004"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://acceso_user:changeme@postgres:5432/acceso_db}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production}
+      REPORT_MAX_DAYS: ${REPORT_MAX_DAYS:-90}
+      REPORT_MAX_ROWS: ${REPORT_MAX_ROWS:-10000}
+    networks:
+      - acceso-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5004/reports/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── Frontend React ───────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+    container_name: frontend
+    restart: on-failure:3
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://localhost}
+    networks:
+      - acceso-net
+    depends_on:
+      servicio-autenticacion:
+        condition: service_healthy
+      servicio-acceso:
+        condition: service_healthy
+      servicio-gestion:
+        condition: service_healthy
+      servicio-reportes:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ── Nginx API Gateway ────────────────────────────────────────────────────────
+  # Único servicio con puerto expuesto al host: 443 (HTTPS).
+  # HTTP/80 queda sin exponer; la redirección 301 se gestiona dentro de Nginx.
+  nginx:
+    build:
+      context: ./nginx
+    container_name: nginx
+    restart: on-failure:3
+    ports:
+      - "443:443"
+    volumes:
+      - ${TLS_CERT_PATH:-./nginx/certs/cert.pem}:/etc/nginx/certs/cert.pem:ro
+      - ${TLS_KEY_PATH:-./nginx/certs/key.pem}:/etc/nginx/certs/key.pem:ro
+    networks:
+      - acceso-net
+    depends_on:
+      frontend:
+        condition: service_healthy
+      servicio-autenticacion:
+        condition: service_healthy
+      servicio-acceso:
+        condition: service_healthy
+      servicio-gestion:
+        condition: service_healthy
+      servicio-reportes:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fk https://localhost:443/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

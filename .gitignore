@@ -1,0 +1,162 @@
+# ==============================================================================
+# Python
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+*.so
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# pytest / testing
+.pytest_cache/
+.cache/
+.hypothesis/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+*.coveragerc
+nosetests.xml
+test-results/
+
+# mypy / type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Alembic
+alembic/versions/__pycache__/
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+*.ipynb
+
+# ==============================================================================
+# Node / JavaScript / TypeScript
+# ==============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-debug.log*
+lerna-debug.log*
+
+# Build output
+dist/
+dist-ssr/
+build/
+out/
+
+# Vite
+*.local
+.vite/
+
+# TypeScript
+*.tsbuildinfo
+
+# Testing
+coverage/
+playwright-report/
+playwright/.cache/
+test-results/
+
+# Package lock files (keep only one)
+# Uncomment the ones you don't use:
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# ==============================================================================
+# Environment & Secrets
+# ==============================================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+
+# ==============================================================================
+# Docker
+# ==============================================================================
+.dockerignore
+
+# ==============================================================================
+# Build artifacts & binaries
+# ==============================================================================
+*.o
+*.a
+*.lib
+*.dll
+*.dylib
+*.exe
+*.out
+*.app
+*.elf
+*.bin
+*.hex
+
+# PlatformIO (firmware ESP32)
+firmware/.pio/
+firmware/.pioenvs/
+firmware/.piolibdeps/
+firmware/lib/
+firmware/.vscode/
+
+# ==============================================================================
+# IDEs & Editors
+# ==============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ==============================================================================
+# Logs & temporary files
+# ==============================================================================
+*.log
+logs/
+*.tmp
+*.temp
+
+# ==============================================================================
+# OS
+# ==============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
