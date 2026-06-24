@@ -1,6 +1,6 @@
 # Checklist de Implementacion vs Spec
 
-Fecha de auditoria: 2026-06-17
+Fecha de auditoria: 2026-06-21
 
 Este documento cruza el estado real del codigo actual con:
 
@@ -22,16 +22,16 @@ Convenciones:
 | R1 Estudiantes y RFID | IMPLEMENTADO | Endpoints CRUD base, asociacion RFID y pruebas unitarias base ya existen |
 | R2 Ambientes y nodos | IMPLEMENTADO | Gestion de ambientes, nodos, tokens y pruebas unitarias base ya existe; falta validacion runtime |
 | R3 Control de acceso fisico | PARCIAL | Backend de eventos, heartbeat, listados y SSE HTTP existen; faltan firmware y cobertura mas profunda |
-| R4 Autenticacion/autorizacion web | PARCIAL | `login`, `logout`, `change-password`, callbacks JWT y pruebas base ya existen; falta validacion runtime |
-| R5 Monitoreo en tiempo real | PARCIAL | Ya existe endpoint SSE y eventos `node_status`; falta frontend |
-| R6 Reportes | PARCIAL | `GET /reports/events`, `attendance-summary` y pruebas base existen; falta CSV/frontend |
-| R7 Usuarios y roles web | PARCIAL | Gestion de usuarios web y pruebas unitarias base ya existen; faltan frontend y validacion runtime |
-| R8 Comunicacion segura nodo-backend | PARCIAL | Token de nodo ya se valida contra su `node_id`; faltan TLS y firmware |
-| R9 Despliegue y disponibilidad | PARCIAL | Hay Docker, migraciones, health y validacion unitaria por servicio, pero no esta listo end-to-end |
+| R4 Autenticacion/autorizacion web | PARCIAL | Backend auth y frontend base de login/change-password ya existen; falta validacion runtime completa |
+| R5 Monitoreo en tiempo real | PARCIAL | Ya existen dashboard base, SSE autenticado, estado de nodos y filtros; falta validacion funcional completa |
+| R6 Reportes | PARCIAL | `GET /reports/events`, `attendance-summary`, frontend de reportes y CSV ya existen; faltan validaciones de rendimiento y cobertura adicional |
+| R7 Usuarios y roles web | PARCIAL | Gestion de usuarios web, auth frontend y modulos web base ya existen; faltan listados globales de usuarios/nodos y validacion runtime |
+| R8 Comunicacion segura nodo-backend | PARCIAL | Token de nodo ya se valida contra su `node_id` y ya existe TLS local por Nginx; faltan firmware y endurecimiento productivo |
+| R9 Despliegue y disponibilidad | PARCIAL | Backend, frontend y gateway Nginx ya construyen y levantan en Docker; faltan pruebas E2E y escenarios de resiliencia |
 
 ## Hallazgos transversales
 
-- `docker-compose.yml` declara `frontend` y `nginx`, pero `frontend/`, `nginx/` y `firmware/` siguen vacios.
+- `firmware/` sigue vacio; `frontend/` ya tiene base React/Vite con auth, dashboard, reportes y modulos administrativos base, y `nginx/` ya incluye gateway TLS funcional.
 - Aun no existe carpeta raiz `tests/`, pero ya hay suites locales de `unittest` en `services/auth/tests/`, `services/access/tests/`, `services/management/tests/` y `services/reports/tests/`.
 - `services/auth` ya acepta `DATABASE_URL` y mantiene fallback a `DATABASE_URI`.
 - `docker-compose.yml` ya monta `db/init.sql` en `/docker-entrypoint-initdb.d/00-init.sql`.
@@ -40,7 +40,7 @@ Convenciones:
 - Los cuatro microservicios backend ya pasaron al menos una validacion automatica local en Docker con `unittest` o `compileall`.
 - El backend `postgres + auth + access + management + reports` ya fue levantado en conjunto y validado con smoke tests autenticados.
 - La validacion del token de nodo ya cruza el token activo con el `node_id` reportado en el body.
-- El stack completo con `frontend` y `nginx` sigue pendiente porque ambos directorios estan vacios.
+- El stack completo `postgres + auth + access + management + reports + frontend + nginx` ya fue levantado y validado con health checks y smoke tests HTTPS locales.
 
 ## Checklist por requirement
 
@@ -179,6 +179,7 @@ Implementado:
 - [x] `roles_required(*roles)` aplicado en management, access y reports
 - [x] Restricciones por rol en endpoints web protegidos
 - [x] Pruebas automatizadas base
+- [x] Frontend base con `/login`, `/change-password`, store de sesion y rutas protegidas
 
 Pendiente:
 
@@ -190,6 +191,7 @@ Evidencia:
 - `services/auth/app.py` ya registra callbacks de JWT revocado, expirado e invalido.
 - `services/auth/tests/test_auth_routes.py` cubre login, logout, cambio de password y rechazo de JWT ausente o malformado.
 - `services/management/authz.py`, `services/access/auth/web_roles.py` y `services/reports/authz.py` ya aplican revocacion JWT y `roles_required`.
+- `frontend/src/store/auth-store.ts`, `frontend/src/router/guards.tsx`, `frontend/src/pages/login-page.tsx` y `frontend/src/pages/change-password-page.tsx` ya implementan el flujo base de auth web.
 
 Relacion con tasks:
 
@@ -206,22 +208,26 @@ Implementado:
 - [x] Endpoint SSE `GET /access/events/stream`
 - [x] Emision real de eventos hacia cliente HTTP
 - [x] Emision de cambios de conectividad de nodos
+- [x] Frontend React/Vite base con shell de dashboard
+- [x] Dashboard base con stream SSE autenticado
+- [x] Filtros AND por ambiente, fecha y resultado
+- [x] Indicadores visuales `En linea` / `Sin conexion`
 
 Pendiente:
 
-- [ ] Frontend React/Vite
-- [ ] Dashboard en tiempo real
-- [ ] Filtros AND por ambiente, fecha y resultado
-- [ ] Indicadores visuales `En linea` / `Sin conexion`
+- [ ] Validacion funcional completa del dashboard en navegador final
 
 Evidencia:
 
 - `services/access/routes/access.py` publica al canal interno y ya expone el stream SSE HTTP.
-- `frontend/` esta vacio.
+- `frontend/src/hooks/use-access-events.ts` ya realiza bootstrap de eventos/nodos y consume el stream SSE autenticado.
+- `frontend/src/pages/dashboard-page.tsx` ya muestra eventos, filtros AND e indicadores de conectividad de nodos.
 
 Relacion con tasks:
 
-- `6.5`, `12.1`, `12.3`, `12.4` pendientes.
+- `12.1` ya esta implementada en codigo.
+- `12.3` y `12.4` ya estan implementadas en su base.
+- `6.5` queda pendiente por validacion funcional completa.
 
 ### R6. Generacion de Reportes de Asistencia
 
@@ -241,7 +247,7 @@ Implementado:
 
 Pendiente:
 
-- [ ] Exportacion CSV en frontend
+- [x] Exportacion CSV en frontend
 - [ ] Garantia verificada de tiempo de respuesta <= 3000 ms
 - [ ] Restricciones por rol verificadas con mayor cobertura
 
@@ -249,13 +255,15 @@ Evidencia:
 
 - Implementacion en `services/reports/routes/reports.py`.
 - `attendance-summary` ya agrega autorizados y denegados por ambiente.
-- `frontend/` vacio, por lo que no existe exportacion CSV.
+- `frontend/src/pages/reports-page.tsx` ya implementa filtros por fechas e IDs, tabla paginada, resumen por estudiante y exportacion CSV.
+- `frontend/src/lib/reports.ts` ya centraliza el consumo de `/reports/events` y `/reports/attendance-summary`, asi como la serializacion CSV.
+- `frontend/src/lib/reports.test.ts` ya valida defaults y serializacion CSV del modulo.
 
 Relacion con tasks:
 
 - `8.2` parcial.
-- `8.3` pendiente.
-- `12.6` pendiente.
+- `8.3` implementada en frontend base.
+- `12.6` implementada en su base; falta validacion funcional integrada.
 
 ### R7. Gestion de Roles y Usuarios del Sistema Web
 
@@ -275,7 +283,7 @@ Implementado:
 
 Pendiente:
 
-- [ ] Flujo de primer login y cambio forzado de password en frontend
+- [x] Flujo base de primer login y cambio forzado de password en frontend
 - [ ] Validacion runtime end-to-end
 
 Evidencia:
@@ -283,12 +291,14 @@ Evidencia:
 - `services/management/routes/management.py` ya implementa alta y actualizacion de usuarios web.
 - `services/auth/routes/auth.py` ya bloquea login de usuario inactivo y permite cambio de password.
 - `services/management/tests/test_management_routes.py` cubre alta, duplicado de email y desactivacion de usuarios web.
-- `frontend/` sigue vacio.
+- `frontend/src/pages/change-password-page.tsx` y `frontend/src/router/guards.tsx` ya implementan el flujo base de primer login y bloqueo de navegacion.
+- `frontend/src/pages/students-page.tsx`, `frontend/src/pages/environments-page.tsx`, `frontend/src/pages/nodes-page.tsx` y `frontend/src/pages/users-page.tsx` ya implementan formularios administrativos base conectados a `management`.
 
 Relacion con tasks:
 
 - `4.5`, `2.3` y `2.5` estan implementadas en codigo.
-- `12.2` sigue pendiente.
+- `12.2` ya esta implementada en su base.
+- `12.5` ya esta implementada en su base; faltan listados globales de `users` y `nodes` desde `management`, validacion runtime y cobertura de frontend.
 
 ### R8. Comunicacion Segura entre Nodos y Backend
 
@@ -303,8 +313,8 @@ Implementado:
 
 Pendiente:
 
-- [ ] HTTPS/TLS real via Nginx
-- [ ] Redireccion HTTP -> HTTPS
+- [x] HTTPS/TLS local via Nginx
+- [x] Redireccion HTTP -> HTTPS
 - [ ] Comportamiento del firmware ante `401`
 - [ ] Politica de reintentos del firmware ante errores no `2xx`
 
@@ -313,7 +323,7 @@ Evidencia:
 - Logica de validacion en `services/access/auth/node_token.py`.
 - `services/access/routes/access.py` consume el nodo autenticado inyectado por el decorador.
 - `services/management/routes/management.py` ya implementa `POST /management/nodes/{id}/token`.
-- `nginx/` esta vacio.
+- `nginx/nginx.conf` ya expone TLS local, redireccion HTTP -> HTTPS y proxy inverso para frontend, auth, access, management y reports.
 
 Relacion con tasks:
 
@@ -334,11 +344,12 @@ Implementado:
 - [x] Validacion automatica por servicio con Docker para backend
 - [x] Arranque conjunto validado para `postgres`, `servicio-autenticacion`, `servicio-acceso`, `servicio-gestion` y `servicio-reportes`
 - [x] Smoke test autenticado entre `auth`, `management`, `access` y `reports`
+- [x] Frontend construye en Docker y el contenedor queda healthy en compose
 
 Pendiente:
 
-- [ ] Frontend funcional dentro de Docker
-- [ ] Nginx funcional dentro de Docker
+- [x] Frontend funcional dentro de Docker
+- [x] Nginx funcional dentro de Docker
 - [x] Endpoint `/health` verificado en backend con compose levantado
 - [ ] Respuesta `503` consistente cuando la BD no este disponible en todos los servicios y escenarios
 - [ ] Manejo verificado de reinicio de contenedores
@@ -347,8 +358,8 @@ Pendiente:
 
 Riesgos:
 
-- `frontend/` y `nginx/` estan vacios.
-- Falta validar el stack completo expuesto por `nginx`, porque `frontend/` y `nginx/` aun no tienen implementacion funcional.
+- El frontend ya sirve la SPA y el gateway HTTPS local ya opera, pero faltan validaciones E2E de flujos funcionales completos a traves de la URL publica del gateway.
+- El stack aun no cubre escenarios de resiliencia como reinicio de contenedores, caida de BD y manejo uniforme de `503`.
 
 Relacion con tasks:
 
@@ -394,14 +405,14 @@ Relacion con tasks:
 
 - [x] `attendance-summary`
 - [x] Agregar pruebas unitarias base de reports
-- [ ] Frontend de login
-- [ ] Dashboard en tiempo real
-- [ ] Reportes y CSV
+- [x] Frontend de login
+- [x] Dashboard en tiempo real base
+- [x] Reportes y CSV
 
 ### Bloque 6: Firmware, Nginx y pruebas
 
 - [ ] Firmware ESP32
-- [ ] Nginx/TLS
+- [x] Nginx/TLS
 - [ ] Property-based tests
 - [ ] Integracion y E2E
 
