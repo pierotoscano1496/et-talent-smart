@@ -1,0 +1,34 @@
+{
+  "usuarios": [
+    {
+      "id": 1,
+      "nombre": "Camila Ampuero",
+      "codigo": "EST-001",
+      "rol": "Estudiante",
+      "uid_rfid": "04577F49C42A81",
+      "estado": "activo"
+    },
+    {
+      "id": 2,
+      "nombre": "Gabriel Ramos",
+      "codigo": "EST-002",
+      "rol": "Estudiante",
+      "uid_rfid": "8BE5250A",
+      "estado": "activo"
+    },
+    {
+      "id": 3,
+      "nombre": "Docente Principal",
+      "codigo": "DOC-001",
+      "rol": "Docente",
+      "uid_rfid": "55667788",
+      "estado": "activo"
+    }
+  ],
+  "registros": [],
+  "puerta": {
+    "estado": "abierta",
+    "ultimo_evento": "Acceso permitido para Gabriel Ramos",
+    "ultima_actualizacion": "2026-07-02T14:16:37.349Z"
+  }
+}
