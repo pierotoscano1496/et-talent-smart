@@ -43,4 +43,4 @@ Instrucciones:
     const char* LOCATION_ID = "PUERTA_PRINCIPAL";
     ```
 
-4.
+4. En el archivo **database.json** están la información de los datos que se irán grabando cuando se interactúe con el sistema.
