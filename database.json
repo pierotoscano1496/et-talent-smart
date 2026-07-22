@@ -18,17 +18,49 @@
     },
     {
       "id": 3,
-      "nombre": "Docente Principal",
+      "nombre": "Piero Toscano",
       "codigo": "DOC-001",
       "rol": "Docente",
-      "uid_rfid": "55667788",
+      "uid_rfid": "04A4DF48C42A81",
+      "estado": "activo"
+    },
+    {
+      "id": 4,
+      "nombre": "Tomiko Liao",
+      "codigo": "EST-003",
+      "rol": "Estudiante",
+      "uid_rfid": "CC754FD3",
+      "estado": "activo"
+    },
+    {
+      "id": 5,
+      "nombre": "Fernanda Encina",
+      "codigo": "EST-003",
+      "rol": "Estudiante",
+      "uid_rfid": "04BECE49C42A81",
+      "estado": "activo"
+    },
+    {
+      "id": 6,
+      "nombre": "Isabel Tinco",
+      "codigo": "EST-003",
+      "rol": "Estudiante",
+      "uid_rfid": "04B59148C42A81",
+      "estado": "activo"
+    },
+    {
+      "id": 7,
+      "nombre": "Abigail Vasquez",
+      "codigo": "EST-007",
+      "rol": "Estudiante",
+      "uid_rfid": "3FF466DE",
       "estado": "activo"
     }
   ],
   "registros": [],
   "puerta": {
-    "estado": "abierta",
-    "ultimo_evento": "Acceso permitido para Gabriel Ramos",
-    "ultima_actualizacion": "2026-07-02T14:16:37.349Z"
+    "estado": "cerrada",
+    "ultimo_evento": "Puerta cerrada por seguridad HC-SR04",
+    "ultima_actualizacion": "2026-07-21T23:45:28.722Z"
   }
 }
