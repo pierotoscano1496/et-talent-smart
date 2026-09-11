@@ -2,6 +2,7 @@
 #include <HTTPClient.h>
 #include <ESP_I2S.h>
 #include <math.h>
+#include <string.h>
 #include "secrets.h"
 
 // ESP32-C6-DevKitC-1
@@ -17,17 +18,32 @@
 #define SPK_LRC 4
 #define SPK_DIN 5
 
+// Enlace UART hacia Arduino Uno, que controla la pantalla Nextion.
+#define UI_UART_TX 6
+#define UI_UART_RX -1
+#define UI_UART_BAUD 9600
+
 #define MIC_SAMPLE_RATE 16000
 #define RECORD_SECONDS 4
 #define MIC_GAIN 8
 #define MIN_SPEECH_RMS 400
 #define SPEAKER_GAIN 2
 
+#define FACE_BOOT "BOOT"
+#define FACE_IDLE "IDLE"
+#define FACE_LISTENING "LISTENING"
+#define FACE_THINKING "THINKING"
+#define FACE_SPEAKING "SPEAKING"
+#define FACE_ERROR "ERROR"
+
 // El ESP32-C6 usa un solo puerto I2S. Los dispositivos se activan por turnos.
 I2SClass mic(I2S_NUM_0);
 I2SClass speaker(I2S_NUM_0);
+HardwareSerial uiSerial(1);
 bool microphoneRunning = false;
 bool speakerRunning = false;
+bool uiBridgeRunning = false;
+const char* currentFace = "";
 
 void writeLE16(uint8_t* buffer, uint16_t value) {
   buffer[0] = value & 0xFF;
@@ -39,6 +55,24 @@ void writeLE32(uint8_t* buffer, uint32_t value) {
   buffer[1] = (value >> 8) & 0xFF;
   buffer[2] = (value >> 16) & 0xFF;
   buffer[3] = (value >> 24) & 0xFF;
+}
+
+void sendRobotFace(const char* face) {
+  if (!uiBridgeRunning || strcmp(currentFace, face) == 0) {
+    return;
+  }
+
+  currentFace = face;
+  uiSerial.print("FACE:");
+  uiSerial.println(face);
+  Serial.printf("Pantalla Nextion: %s\n", face);
+}
+
+void startUiBridge() {
+  uiSerial.begin(UI_UART_BAUD, SERIAL_8N1, UI_UART_RX, UI_UART_TX);
+  uiBridgeRunning = true;
+  delay(20);
+  sendRobotFace(FACE_BOOT);
 }
 
 void createWavHeader(uint8_t* wav, uint32_t dataSize) {
@@ -169,6 +203,7 @@ String getAssistantUrl() {
 
 uint8_t* recordAudio(size_t& wavSize, float& rms) {
   if (!microphoneRunning && !startMicrophone()) {
+    sendRobotFace(FACE_ERROR);
     return nullptr;
   }
 
@@ -203,6 +238,7 @@ uint8_t* recordAudio(size_t& wavSize, float& rms) {
   Serial.println("\n==============================");
   Serial.printf("HABLE AHORA (%d segundos)\n", RECORD_SECONDS);
   Serial.println("==============================");
+  sendRobotFace(FACE_LISTENING);
 
   while (captured < totalSamples) {
     const uint32_t remaining = totalSamples - captured;
@@ -265,6 +301,7 @@ uint8_t* recordAudio(size_t& wavSize, float& rms) {
 
   if (rms < MIN_SPEECH_RMS) {
     Serial.println("No se detecto voz suficiente; no se enviara el audio.");
+    sendRobotFace(FACE_IDLE);
   } else if (clippedPercent > 1.0f) {
     Serial.println("AVISO: audio saturado; reduzca MIC_GAIN.");
   }
@@ -291,10 +328,12 @@ bool playResponse(HTTPClient& http) {
 
   if (bits != 16 || (channels != 1 && channels != 2)) {
     Serial.println("Formato PCM no compatible.");
+    sendRobotFace(FACE_ERROR);
     return false;
   }
 
   if (!startSpeaker(sampleRate, channels)) {
+    sendRobotFace(FACE_ERROR);
     return false;
   }
 
@@ -302,12 +341,14 @@ bool playResponse(HTTPClient& http) {
   if (!stream) {
     Serial.println("No se pudo obtener el stream HTTP.");
     stopSpeaker();
+    sendRobotFace(FACE_ERROR);
     return false;
   }
 
   int remaining = http.getSize();
   uint8_t buffer[2048];
   Serial.println("REPRODUCIENDO RESPUESTA...");
+  sendRobotFace(FACE_SPEAKING);
 
   while (http.connected() && (remaining > 0 || remaining == -1)) {
     size_t available = stream->available();
@@ -333,6 +374,7 @@ bool playResponse(HTTPClient& http) {
   }
 
   stopSpeaker();
+  sendRobotFace(FACE_IDLE);
   Serial.println("Reproduccion terminada.");
   return true;
 }
@@ -340,6 +382,7 @@ bool playResponse(HTTPClient& http) {
 void sendQuestion(uint8_t* wav, size_t wavSize) {
   connectWiFi();
   stopMicrophone();
+  sendRobotFace(FACE_THINKING);
 
   HTTPClient http;
   const String assistantUrl = getAssistantUrl();
@@ -347,6 +390,7 @@ void sendQuestion(uint8_t* wav, size_t wavSize) {
 
   if (!http.begin(assistantUrl)) {
     Serial.println("No se pudo iniciar HTTP.");
+    sendRobotFace(FACE_ERROR);
     startMicrophone();
     return;
   }
@@ -370,14 +414,23 @@ void sendQuestion(uint8_t* wav, size_t wavSize) {
     const String response = http.getString();
     Serial.println("Error del servidor:");
     Serial.println(response.length() ? response : HTTPClient::errorToString(status));
+    sendRobotFace(FACE_ERROR);
   }
 
   http.end();
 
   if (!startMicrophone()) {
     Serial.println("No se pudo restaurar el microfono. Reiniciando...");
+    sendRobotFace(FACE_ERROR);
     delay(1000);
     ESP.restart();
+  }
+
+  if (
+    strcmp(currentFace, FACE_THINKING) == 0
+    || strcmp(currentFace, FACE_ERROR) == 0
+  ) {
+    sendRobotFace(FACE_IDLE);
   }
 }
 
@@ -389,16 +442,19 @@ void setup() {
   Serial.println("ASISTENTE DE VOZ ESP32-C6");
   Serial.println("==============================");
 
+  startUiBridge();
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   connectWiFi();
 
   if (!startMicrophone()) {
     Serial.println("Sistema detenido.");
+    sendRobotFace(FACE_ERROR);
     while (true) {
       delay(1000);
     }
   }
 
+  sendRobotFace(FACE_IDLE);
   Serial.println("Sistema listo. Pulse el boton para hablar.");
 }
 
@@ -420,6 +476,8 @@ void loop() {
   if (wav) {
     if (rms >= MIN_SPEECH_RMS) {
       sendQuestion(wav, wavSize);
+    } else {
+      sendRobotFace(FACE_IDLE);
     }
     free(wav);
   }

@@ -185,6 +185,21 @@ Amplificador MAX98357A:
 - `LRC` -> GPIO 4
 - `DIN` -> GPIO 5
 
+Arduino Uno para pantalla Nextion:
+
+- `ESP32 GPIO 6` -> `Arduino Uno D8`
+- `ESP32 GND` -> `Arduino Uno GND`
+
+Pantalla Nextion NX4832F035 al Arduino Uno:
+
+- `Nextion RX` <- `Arduino Uno D1/TX`
+- `Nextion TX` -> `Arduino Uno D0/RX` opcional
+- `Nextion 5V` -> fuente de 5V
+- `Nextion GND` -> `Arduino Uno GND`
+
+Nota: si la Nextion esta conectada a `D0/D1`, puede ser necesario
+desconectarla mientras se carga el sketch al Arduino Uno.
+
 ### Ajuste de volumen del parlante
 
 El volumen digital de reproduccion se controla en `codigo.ino`:
@@ -201,6 +216,50 @@ Si aun falta volumen, ajustar el hardware del MAX98357A: el pin `GAIN` sin
 conectar usa 9 dB por defecto; conectado directo a `GND` usa 12 dB; con una
 resistencia de 100 kOhm entre `GAIN` y `GND` usa 15 dB. Despues de cambiar
 `GAIN`, reiniciar la alimentacion del amplificador.
+
+### Pantalla Nextion con Arduino Uno
+
+El ESP32-C6 envia estados visuales por UART al Arduino Uno. El Uno queda como
+esclavo de pantalla y traduce esos estados a comandos Nextion.
+
+Sketch del Arduino Uno:
+
+```text
+nextion_uno_bridge/nextion_uno_bridge.ino
+```
+
+Contrato UART desde el ESP32:
+
+```text
+FACE:BOOT
+FACE:IDLE
+FACE:LISTENING
+FACE:THINKING
+FACE:SPEAKING
+FACE:ERROR
+```
+
+Mapeo por defecto en la Nextion:
+
+- `BOOT` e `IDLE` -> `page inicio`
+- `LISTENING` -> `page escuchando`
+- `THINKING` -> `page pensando`
+- `SPEAKING` -> `page respondiendo`
+- `ERROR` -> `page error`
+
+Crear esas paginas en el archivo HMI de la Nextion, o cambiar la tabla
+`faceRoutes` del sketch del Uno si las caras tienen otros nombres. Si se usan
+imagenes en una sola pagina en lugar de varias paginas, reemplazar comandos
+como `page escuchando` por comandos del componente, por ejemplo
+`face.pic=1`.
+
+Los pines UART del ESP32 se configuran en `codigo.ino`:
+
+```cpp
+#define UI_UART_TX 6
+#define UI_UART_RX -1
+#define UI_UART_BAUD 9600
+```
 
 ### Prueba aislada de Speech-to-Text
 
