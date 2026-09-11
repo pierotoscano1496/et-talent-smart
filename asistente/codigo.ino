@@ -21,6 +21,7 @@
 #define RECORD_SECONDS 4
 #define MIC_GAIN 8
 #define MIN_SPEECH_RMS 400
+#define SPEAKER_GAIN 2
 
 // El ESP32-C6 usa un solo puerto I2S. Los dispositivos se activan por turnos.
 I2SClass mic(I2S_NUM_0);
@@ -132,6 +133,26 @@ bool startSpeaker(int sampleRate, int channels) {
     speakerRunning ? "MAX98357A listo" : "ERROR iniciando MAX98357A"
   );
   return speakerRunning;
+}
+
+void applySpeakerGain(uint8_t* buffer, size_t bytes) {
+  if (SPEAKER_GAIN <= 1) {
+    return;
+  }
+
+  for (size_t i = 0; i + 1 < bytes; i += 2) {
+    const uint16_t rawSample = static_cast<uint16_t>(buffer[i])
+      | (static_cast<uint16_t>(buffer[i + 1]) << 8);
+    const int16_t sample = static_cast<int16_t>(rawSample);
+    int32_t amplified = static_cast<int32_t>(sample) * SPEAKER_GAIN;
+    amplified = constrain(amplified, -32768, 32767);
+
+    const uint16_t clipped = static_cast<uint16_t>(
+      static_cast<int16_t>(amplified)
+    );
+    buffer[i] = clipped & 0xFF;
+    buffer[i + 1] = (clipped >> 8) & 0xFF;
+  }
 }
 
 String getAssistantUrl() {
@@ -302,6 +323,7 @@ bool playResponse(HTTPClient& http) {
     if (bytesRead > 0) {
       const size_t alignedBytes = bytesRead & ~static_cast<size_t>(1);
       if (alignedBytes > 0) {
+        applySpeakerGain(buffer, alignedBytes);
         speaker.write(buffer, alignedBytes);
       }
       if (remaining > 0) {

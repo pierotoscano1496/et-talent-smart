@@ -185,6 +185,23 @@ Amplificador MAX98357A:
 - `LRC` -> GPIO 4
 - `DIN` -> GPIO 5
 
+### Ajuste de volumen del parlante
+
+El volumen digital de reproduccion se controla en `codigo.ino`:
+
+```cpp
+#define SPEAKER_GAIN 2
+```
+
+Subirlo a `3` aumenta mas el volumen, pero puede producir distorsion si el
+audio llega cerca del maximo. `MIC_GAIN` solo afecta al microfono; no aumenta
+el volumen del parlante.
+
+Si aun falta volumen, ajustar el hardware del MAX98357A: el pin `GAIN` sin
+conectar usa 9 dB por defecto; conectado directo a `GND` usa 12 dB; con una
+resistencia de 100 kOhm entre `GAIN` y `GND` usa 15 dB. Despues de cambiar
+`GAIN`, reiniciar la alimentacion del amplificador.
+
 ### Prueba aislada de Speech-to-Text
 
 El sketch `esp32_stt_test/esp32_stt_test.ino` solo usa el boton y el INMP441.

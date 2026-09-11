@@ -160,3 +160,44 @@ logs/
 ehthumbs.db
 Thumbs.db
 desktop.ini
+
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+secrets.h
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Test and coverage output
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log
+
+# Arduino / ESP32 generated output
+build/
+*.bin
+*.elf
+*.map
+*.hex
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
