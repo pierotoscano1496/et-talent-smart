@@ -1,84 +1,48 @@
-# TalentSmart RFID Web
+# pagina-control — asistencia RFID
 
-Web de presentación para el proyecto:
+Subproyecto de robótica para la interacción de estudiantes con tarjetas, llaveros o pulseras RFID. Es distinto de [Talentosito](../talentosito/README.md), el asistente de consultas por voz. Ambos forman parte de Talent Smart y comparten las reglas y datos de Django.
 
-ESP32-C6 + RFID-RC522 + HC-SR04 + puerta automática + dashboard de rastreo.
+## Componentes
 
-## ¿Qué muestra?
+- `esp32.cpp`: firmware ESP32-C6, lector RC522, sensor HC-SR04 y servo MG90S.
+- `public/`: panel de administración de llaves y monitoreo RFID.
+- `Dockerfile` y `nginx.conf`: panel estático y proxy de `/api/` hacia Django.
+- Django guarda cuentas, llaves, lecturas, asistencia diaria y último estado de dispositivos en PostgreSQL. MinIO sigue reservado a archivos de la aplicación.
+- `database.json` se conserva como archivo histórico de pruebas: ningún servicio lo lee o modifica. Las cuentas deben crearse en Django; no se importan registros históricos sin revisión.
+- `server.js` ahora inicia el conjunto dev de Compose por compatibilidad con `npm start`. Ya no existe una API Express ni credencial de demostración.
 
-- Dashboard de usuarios registrados.
-- Accesos permitidos y denegados.
-- Estado de puerta.
-- Historial RFID.
-- Formulario para registrar usuarios.
-- Modo demo para simular lecturas RFID sin conectar todavía el ESP32.
+## Arranque dev
 
-## Requisitos
+Desde la raíz del repositorio:
 
-Instalar Node.js.
-
-## Cómo ejecutar
-
-1. Abre la carpeta del proyecto.
-2. Ejecuta:
-
-```bash
-npm install
-npm start
+```sh
+node deploy/dev.mjs start
+node deploy/dev.mjs admin
 ```
 
-3. Abre en el navegador:
+Panel: http://localhost:3000/. El administrador crea cuentas de estudiantes y asigna o retira llaves. El auxiliar consulta las lecturas recientes y la asistencia del día. Las cuentas de otros roles no acceden a este panel. Las sesiones se conservan solo en memoria y las claves del dispositivo nunca se entregan al navegador.
 
-```text
-http://localhost:3000
-```
+Grados, secciones y otras cuentas se gestionan mediante Django admin/API. El retiro temprano sigue siendo una incidencia registrada por el auxiliar, independiente del reporte de cierre de una puerta.
 
-## Endpoint para el ESP32-C6
+## Preparar el ESP32
 
-El ESP32 debe enviar un POST a:
+1. Instalar Arduino IDE, plataforma Espressif ESP32 (3.x), bibliotecas MFRC522, ESP32Servo y ArduinoJson 7.
+2. Crear un sketch Arduino vacío y agregar `esp32.cpp` como archivo fuente. Copiar `secrets.example.h` a `secrets.h` en la misma carpeta. Elegir ESP32-C6 Dev Module, o la placa exacta del dispositivo.
+3. Completar Wi-Fi, identificadores únicos de dispositivo/ubicación y `API_KEY` con el valor privado `RFID_API_KEY` del ambiente. No usar la clave de Talentosito.
+4. En dev, usar la IP LAN de la computadora y puerto 3000 para `SERVER_URL` y `SERVER_STATE_URL`. Configurar `DEV_BIND_IP=0.0.0.0` y añadir la IP a `DJANGO_ALLOWED_HOSTS` en `deploy/env/dev.env`; recrear backend y pagina-control. Permitir el puerto en el firewall local.
+5. En qa, usar `https://DOMINIO_API_QA/rfid/api/rfid/registro` y `https://DOMINIO_API_QA/rfid/api/puerta/estado`. Establecer `ALLOW_INSECURE_HTTP=false`, pegar la CA raíz PEM válida en `TLS_ROOT_CA` y permitir sincronización NTP. No se desactiva la verificación del certificado.
+6. Compilar, cargar y verificar las conexiones y ángulos en la maqueta antes de operar.
 
-```text
-http://IP_DE_TU_PC:3000/api/rfid/registro
-```
+Pines conservados: RC522 SCK=6, MISO=2, MOSI=7, SS=10, RST=3; HC-SR04 TRIG=18, ECHO=19; servo=4. Verificar niveles eléctricos y alimentación correspondientes a la placa y sensores.
 
-Ejemplo:
+El firmware solo autoriza con HTTP 200 y JSON válido con `ok: true` y `authorized: true`. Ante una falla de red no autoriza: presentar nuevamente la tarjeta cuando se recupere. No hay cola persistente para asistencia sin conexión. Cada presentación usa un identificador de evento; el backend permite reintentar ese mismo evento sin duplicarlo y consolida todas las lecturas válidas del día en una asistencia.
 
-```json
-{
-  "uid": "A1B2C3D4",
-  "device_id": "ESP32C6_RFID_01",
-  "location_id": "PUERTA_PRINCIPAL",
-  "event_type": "rfid_detected",
-  "wifi_rssi": -54,
-  "millis": 123456
-}
-```
+Mientras la puerta está abierta, se prioriza el sensor y no se inician nuevas validaciones RFID. La telemetría usa una tarea aparte y comunica el último estado comandado al arrancar, al cambiar y cada 30 segundos; fallas de red no bloquean el control del sensor. Sin eco válido se mantiene abierta hasta obtener una medida válida de paso libre. Comprobar este comportamiento en el montaje físico.
 
-Debe incluir el header:
+El panel muestra el último reporte y su fecha. No hay sensor de posición ni confirmación de paso: la autorización o el reporte de estado no prueban que alguien haya cruzado. El panel no envía órdenes de apertura/cierre ni genera marcaciones simuladas.
 
-```text
-X-API-KEY: TALENT_SMART_KEY
-```
+## qa y pruebas
 
-## UIDs de prueba
+El workflow construye la imagen `pagina-control` con el SHA del commit. Compose la ejecuta en Hostinger detrás del gateway en `/rfid/`, sin publicar otro puerto del host. Las reglas y permisos se prueban con `node deploy/dev.mjs test`; la compilación de firmware y prueba física son verificaciones separadas.
 
-La base inicial tiene estos UIDs autorizados:
-
-```text
-A1B2C3D4
-11223344
-55667788
-```
-
-Puedes registrar más usuarios desde la propia web.
-
-## Para la exposición
-
-Puedes explicar:
-
-1. El usuario acerca su pulsera o tarjeta RFID.
-2. El ESP32-C6 lee el UID.
-3. La web valida si el UID pertenece a un usuario autorizado.
-4. Si está autorizado, la puerta abre.
-5. El HC-SR04 evita que la puerta cierre mientras una persona sigue pasando.
-6. El dashboard registra quién entró, a qué hora y por qué punto de acceso.
+Consultar [API](../docs/api.md), [dev](../docs/ejecucion-dev.md) y [qa](../docs/despliegue-qa.md). Referencias del firmware: [ArduinoJson 7](https://arduinojson.org/v7/api/json/deserializejson/) y [TLS ESP32](https://github.com/espressif/arduino-esp32/blob/master/libraries/NetworkClientSecure/README.md).

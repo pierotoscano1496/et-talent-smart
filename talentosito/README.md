@@ -1,4 +1,8 @@
-# Proyecto IA APIs - Asistente de voz con ESP32-C6
+# Talentosito — Asistente de voz con ESP32-C6
+
+Talentosito es el subproyecto de robótica que atiende las consultas de los estudiantes. El otro subproyecto es [pagina-control](../pagina-control/README.md), responsable del dispositivo y panel RFID de asistencia. Ambos se ejecutan con Compose y utilizan Django como backend escolar común.
+
+Este directorio reemplaza a `asistente/`. Para ejecutar el conjunto actual usar [dev](../docs/ejecucion-dev.md) o [qa](../docs/despliegue-qa.md). El [contrato actualizado](../docs/api.md) exige `X-Device-Key` en `/ask` y `/transcribe`. En Compose dev, el servicio se publica en el puerto 8001; Django ocupa 8000. Las instrucciones independientes que siguen requieren configurar también `TALENTOSITO_DEVICE_KEY` desde `.env.example`.
 
 Backend FastAPI para recibir audio WAV desde un ESP32-C6, procesarlo con Groq y devolver audio PCM para reproducirlo en el dispositivo.
 

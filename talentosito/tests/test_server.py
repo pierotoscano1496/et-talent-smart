@@ -106,7 +106,7 @@ class ServerTestCase(unittest.TestCase):
     def setUp(self):
         self.config_patch = patch.dict(
             os.environ,
-            {"GROQ_STT_MIN_RMS": "0"}
+            {"GROQ_STT_MIN_RMS": "0", "TALENTOSITO_DEVICE_KEY": "test-device"}
         )
         self.config_patch.start()
         self.pcm_output = b"\x01\x02\x03\x04"
@@ -114,7 +114,7 @@ class ServerTestCase(unittest.TestCase):
         server.app.dependency_overrides[server.get_groq_client] = (
             lambda: self.fake_groq
         )
-        self.client = TestClient(server.app)
+        self.client = TestClient(server.app, headers={"X-Device-Key": "test-device"})
 
     def tearDown(self):
         server.app.dependency_overrides.clear()
@@ -128,6 +128,22 @@ class ServerTestCase(unittest.TestCase):
             response.json(),
             {"estado": "Servidor Groq del asistente ESP32-C6 funcionando"}
         )
+
+    def test_voice_rejects_unauthenticated_device(self):
+        response = self.client.post("/ask", content=b"audio", headers={"X-Device-Key": "wrong"})
+        self.assertEqual(response.status_code, 401)
+        self.assertIsNone(self.fake_groq.transcription_kwargs)
+
+    def test_voice_has_a_body_size_limit(self):
+        response = self.client.post("/ask", content=b"x" * (4 * 1024 * 1024 + 1))
+        self.assertEqual(response.status_code, 413)
+
+    def test_context_needs_valid_backend_identity(self):
+        with patch("server.httpx.AsyncClient.get", new_callable=unittest.mock.AsyncMock) as get:
+            get.return_value = httpx.Response(401, request=httpx.Request("GET", "http://backend"))
+            response = self.client.post("/ask", content=make_wav(b"\\x10\\x20"), headers={"X-User-Token": "bad"})
+        self.assertEqual(response.status_code, 403)
+        self.assertIsNone(self.fake_groq.transcription_kwargs)
 
     def test_ask_returns_pcm_audio_with_metadata_headers(self):
         wav_input = make_wav(b"\x10\x20")

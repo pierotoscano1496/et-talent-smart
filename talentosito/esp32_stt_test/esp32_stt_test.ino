@@ -201,6 +201,7 @@ void requestTranscription(uint8_t* wav, size_t wavSize) {
   http.collectHeaders(responseHeaders, 4);
 
   http.addHeader("Content-Type", "audio/wav");
+  http.addHeader("X-Device-Key", TALENTOSITO_DEVICE_KEY);
   http.addHeader("Accept", "text/plain");
 
   const int status = http.POST(wav, wavSize);

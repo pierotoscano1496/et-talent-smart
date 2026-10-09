@@ -1,0 +1,49 @@
+name: Validate application
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - name: Configure disposable dev environment
+        run: node deploy/init-dev.mjs
+      - name: Build and validate services
+        shell: bash
+        run: |
+          set -euo pipefail
+          dc() { docker compose --env-file deploy/env/dev.env -p talentsmart-ci -f compose.yaml -f compose.dev.yaml "$@"; }
+          dc config --quiet
+          node --check pagina-control/public/app.js
+          dc build backend talentosito pagina-control minio minio-init
+          dc up -d --wait postgres minio
+          dc run --rm minio-init
+          dc run --rm --no-deps backend python manage.py migrate --noinput
+          dc run --rm --no-deps -e DJANGO_SETTINGS_MODULE=config.settings.test -e TEST_POSTGRES=1 backend python manage.py test
+          dc run --rm --no-deps backend python manage.py makemigrations --check --dry-run
+          dc run --rm --no-deps talentosito python -m unittest discover -s tests -v
+          dc up -d --wait backend talentosito pagina-control
+          dc exec -T backend python manage.py smoke_test
+          curl --fail http://localhost:3000/health
+          curl --fail http://localhost:3000/api/health/ready/
+      - name: Stop disposable CI services
+        if: always()
+        run: docker compose --env-file deploy/env/dev.env -p talentsmart-ci -f compose.yaml -f compose.dev.yaml down
+

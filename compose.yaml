@@ -1,0 +1,113 @@
+services:
+  pagina-control:
+    networks: [app]
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17.6-bookworm
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Required}
+      POSTGRES_USER: ${POSTGRES_USER:?Required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  minio:
+    image: ${MINIO_IMAGE:-talentsmart-minio:local}
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Required}
+    volumes:
+      - minio-data:/data
+    networks: [data]
+    restart: unless-stopped
+
+  minio-init:
+    image: ${MINIO_MC_IMAGE:-talentsmart-minio-mc:local}
+    entrypoint: ["/bin/sh", "/init-minio.sh"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Required}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?Required}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Required}
+      MINIO_BUCKET: ${MINIO_BUCKET:?Required}
+    volumes:
+      - ./deploy/init-minio.sh:/init-minio.sh:ro
+    networks: [data]
+    depends_on:
+      minio:
+        condition: service_started
+
+  backend:
+    environment:
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:?Required}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Required}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?Required}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?Required}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-}
+      POSTGRES_DB: ${POSTGRES_DB:?Required}
+      POSTGRES_USER: ${POSTGRES_USER:?Required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Required}
+      POSTGRES_HOST: postgres
+      MINIO_ENDPOINT: minio:9000
+      MINIO_BUCKET: ${MINIO_BUCKET:?Required}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?Required}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Required}
+      RFID_API_KEY: ${RFID_API_KEY:?Required}
+      TALENTOSITO_SERVICE_KEY: ${TALENTOSITO_SERVICE_KEY:?Required}
+    networks: [app, data]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/ready/', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 20s
+    restart: unless-stopped
+
+  talentosito:
+    environment:
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_STT_MODEL: ${GROQ_STT_MODEL:-whisper-large-v3-turbo}
+      GROQ_CHAT_MODEL: ${GROQ_CHAT_MODEL:-openai/gpt-oss-120b}
+      GROQ_TTS_MODEL: ${GROQ_TTS_MODEL:-canopylabs/orpheus-v1-english}
+      GROQ_TTS_VOICE: ${GROQ_TTS_VOICE:-troy}
+      TALENTOSITO_DEVICE_KEY: ${TALENTOSITO_DEVICE_KEY:?Required}
+      TALENTOSITO_SERVICE_KEY: ${TALENTOSITO_SERVICE_KEY:?Required}
+      DJANGO_API_URL: http://backend:8000
+      APP_ENV: ${APP_ENV:?Required}
+    networks: [app]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+    restart: unless-stopped
+
+networks:
+  app:
+  data:
+    internal: true
+volumes:
+  postgres-data:
+  minio-data:

@@ -1,5 +1,13 @@
+#include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
+#include <esp_system.h>
+#include <time.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <freertos/task.h>
 #include <SPI.h>
 #include <MFRC522.h>
 #include <ESP32Servo.h>
@@ -7,16 +15,7 @@
 // =====================================================
 // CONFIGURACIÓN WIFI Y WEB
 // =====================================================
-const char* WIFI_SSID = "Si";
-const char* WIFI_PASSWORD = "ñuffy123";
-
-const char* SERVER_URL = "https://8f11-2800-4b0-4003-9b74-f8c5-697d-748a-e445.ngrok-free.app/api/rfid/registro";
-const char* SERVER_CLOSE_URL = "https://8f11-2800-4b0-4003-9b74-f8c5-697d-748a-e445.ngrok-free.app/puerta/cerrar";
-
-const char* API_KEY = "TALENT_SMART_KEY";
-
-const char* DEVICE_ID = "ESP32C6_RFID_01";
-const char* LOCATION_ID = "PUERTA_PRINCIPAL";
+#include "secrets.h"
 
 // =====================================================
 // PINES RFID RC522
@@ -58,6 +57,9 @@ const unsigned long MIN_OPEN_TIME = 5000;
 const unsigned long CLEAR_DELAY = 2500;
 const unsigned long SONAR_INTERVAL = 150;
 
+QueueHandle_t doorReports = nullptr;
+String bootId;
+unsigned long eventSequence = 0;
 bool doorIsOpen = false;
 unsigned long doorOpenedAt = 0;
 unsigned long lastPresenceAt = 0;
@@ -141,6 +143,8 @@ float getDistanceCM() {
 // =====================================================
 // ABRIR PUERTA CON SERVO
 // =====================================================
+void queueDoorState();
+
 void openDoor() {
   if (!doorIsOpen) {
     Serial.println("Abriendo puerta con servo MG90S...");
@@ -149,6 +153,7 @@ void openDoor() {
     delay(600);
 
     doorIsOpen = true;
+    queueDoorState();
     doorOpenedAt = millis();
     lastPresenceAt = millis();
 
@@ -161,22 +166,51 @@ void openDoor() {
 // =====================================================
 // AVISAR A LA WEB QUE LA PUERTA CERRÓ
 // =====================================================
-void notifyDoorClosedToWeb() {
-  if (WiFi.status() != WL_CONNECTED) {
-    return;
-  }
-
+// Each call owns its clients; telemetry runs outside the sensor/servo loop.
+int postJSON(const char* url, const String& payload, String& response) {
+  if (WiFi.status() != WL_CONNECTED) return -1;
+  WiFiClient plain;
+  WiFiClientSecure secure;
   HTTPClient http;
-  http.begin(SERVER_CLOSE_URL);
+  const String target(url);
+  bool started = false;
+  if (target.startsWith("https://")) {
+    if (!TLS_ROOT_CA[0] || time(nullptr) < 1700000000) return -1;
+    secure.setCACert(TLS_ROOT_CA);
+    secure.setHandshakeTimeout(5);
+    started = http.begin(secure, target);
+  } else if (target.startsWith("http://") && ALLOW_INSECURE_HTTP) {
+    started = http.begin(plain, target);
+  }
+  if (!started) return -1;
+  http.setConnectTimeout(3000);
+  http.setTimeout(3000);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("X-API-KEY", API_KEY);
-
-  int httpCode = http.POST("{}");
-
-  Serial.print("Aviso cierre puerta HTTP: ");
-  Serial.println(httpCode);
-
+  const int code = http.POST(payload);
+  if (code == HTTP_CODE_OK) response = http.getString();
   http.end();
+  return code;
+}
+
+void queueDoorState() {
+  if (doorReports) xQueueOverwrite(doorReports, &doorIsOpen);
+}
+
+void reportDoorTask(void*) {
+  bool state = false;
+  // Send the latest commanded state at startup, on change, and every 30 seconds.
+  for (;;) {
+    xQueueReceive(doorReports, &state, pdMS_TO_TICKS(30000));
+    JsonDocument body;
+    body["device_id"] = DEVICE_ID;
+    body["location_id"] = LOCATION_ID;
+    body["state"] = state ? "abierta" : "cerrada";
+    String payload, response;
+    serializeJson(body, payload);
+    const int code = postJSON(SERVER_STATE_URL, payload, response);
+    Serial.printf("Estado de puerta HTTP: %d\n", code);
+  }
 }
 
 // =====================================================
@@ -191,7 +225,7 @@ void closeDoor() {
 
     doorIsOpen = false;
 
-    notifyDoorClosedToWeb();
+    queueDoorState();
 
     Serial.println("Puerta cerrada.");
   }
@@ -201,61 +235,27 @@ void closeDoor() {
 // ENVIAR UID A LA WEB Y VALIDAR AUTORIZACIÓN
 // =====================================================
 bool sendToWebAndCheckAuthorization(String uid) {
+  // No offline authorizations; a failed request requires presenting the card again.
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi desconectado. Reintentando...");
-    connectWiFi();
-
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("No hay WiFi. Acceso denegado.");
-      return false;
-    }
+    WiFi.reconnect();
+    return false;
   }
-
-  HTTPClient http;
-
-  http.begin(SERVER_URL);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-API-KEY", API_KEY);
-
-  String payload = "{";
-  payload += "\"uid\":\"" + uid + "\",";
-  payload += "\"device_id\":\"" + String(DEVICE_ID) + "\",";
-  payload += "\"location_id\":\"" + String(LOCATION_ID) + "\",";
-  payload += "\"event_type\":\"rfid_detected\",";
-  payload += "\"wifi_rssi\":" + String(WiFi.RSSI()) + ",";
-  payload += "\"millis\":" + String(millis());
-  payload += "}";
-
-  Serial.println("Enviando a la web:");
-  Serial.println(payload);
-
-  int httpCode = http.POST(payload);
-
-  Serial.print("Código HTTP: ");
-  Serial.println(httpCode);
-
-  bool authorized = false;
-
-  if (httpCode > 0) {
-    String response = http.getString();
-
-    Serial.println("Respuesta del servidor:");
-    Serial.println(response);
-
-    response.replace(" ", "");
-    response.replace("\n", "");
-    response.replace("\r", "");
-
-    if (response.indexOf("\"authorized\":true") >= 0) {
-      authorized = true;
-    }
-  } else {
-    Serial.println("Error enviando datos a la web.");
-  }
-
-  http.end();
-
-  return authorized;
+  JsonDocument body;
+  body["uid"] = uid;
+  body["device_id"] = DEVICE_ID;
+  body["location_id"] = LOCATION_ID;
+  body["event_id"] = bootId + "-" + String(++eventSequence);
+  body["wifi_rssi"] = WiFi.RSSI();
+  body["millis"] = millis();
+  String payload, response;
+  serializeJson(body, payload);
+  const int code = postJSON(SERVER_URL, payload, response);
+  Serial.printf("Lectura RFID HTTP: %d\n", code);
+  if (code != HTTP_CODE_OK) return false;
+  JsonDocument result;
+  if (deserializeJson(result, response)) return false;
+  return result["ok"].is<bool>() && result["ok"].as<bool>() &&
+         result["authorized"].is<bool>() && result["authorized"].as<bool>();
 }
 
 // =====================================================
@@ -280,6 +280,11 @@ void updateDoorSafety() {
   Serial.print(distance);
   Serial.println(" cm");
 
+  // A missing echo is not evidence that the path is clear.
+  if (distance <= 0) {
+    lastPresenceAt = now;
+    return;
+  }
   bool personDetected = false;
 
   if (distance > 0 && distance <= PERSON_DETECT_CM) {
@@ -320,6 +325,17 @@ void setup() {
   doorServo.write(SERVO_CLOSED_ANGLE);
 
   connectWiFi();
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  bootId = String(esp_random(), HEX) + String(esp_random(), HEX);
+  doorReports = xQueueCreate(1, sizeof(bool));
+  if (doorReports) {
+    queueDoorState();
+    if (xTaskCreate(reportDoorTask, "door-reports", 8192, nullptr, 1, nullptr) != pdPASS) {
+      vQueueDelete(doorReports);
+      doorReports = nullptr;
+      Serial.println("No se pudo iniciar la telemetria de puerta.");
+    }
+  }
 
   SPI.begin(RFID_SCK, RFID_MISO, RFID_MOSI, RFID_SS);
   rfid.PCD_Init();
@@ -335,6 +351,8 @@ void setup() {
 // =====================================================
 void loop() {
   updateDoorSafety();
+  // Avoid blocking HTTP or Wi-Fi reconnection while the passage is open.
+  if (doorIsOpen) { delay(20); return; }
 
   if (!rfid.PICC_IsNewCardPresent()) {
     delay(20);
@@ -349,8 +367,7 @@ void loop() {
   String uid = getUIDString(rfid.uid.uidByte, rfid.uid.size);
 
   Serial.println();
-  Serial.print("UID detectado: ");
-  Serial.println(uid);
+  Serial.println("Tarjeta detectada.");
 
   unsigned long now = millis();
 

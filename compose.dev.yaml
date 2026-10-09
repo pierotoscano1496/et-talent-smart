@@ -1,0 +1,42 @@
+services:
+  pagina-control:
+    build: ./pagina-control
+    ports:
+      - "${DEV_BIND_IP:-127.0.0.1}:3000:8080"
+    volumes:
+      - ./pagina-control/public:/usr/share/nginx/html:ro
+  minio:
+    build:
+      context: ./deploy/storage
+      target: server
+  minio-init:
+    build:
+      context: ./deploy/storage
+      target: client
+  backend:
+    build: ./backend
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app
+    ports:
+      - "${DEV_BIND_IP:-127.0.0.1}:8000:8000"
+  talentosito:
+    build: ./talentosito
+    command: uvicorn server:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./talentosito:/app
+    ports:
+      - "${DEV_BIND_IP:-127.0.0.1}:8001:8000"
+  frontend:
+    build: ./frontend
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+      VITE_BASE_PATH: /et-talent-smart/
+    volumes:
+      - ./frontend:/app
+      - frontend-modules:/app/node_modules
+    ports:
+      - "127.0.0.1:5173:5173"
+    networks: [app]
+volumes:
+  frontend-modules:

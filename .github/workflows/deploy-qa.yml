@@ -1,0 +1,113 @@
+name: Deploy QA
+on:
+  push:
+    branches: [qa]
+  workflow_dispatch:
+
+concurrency:
+  group: talentsmart-qa
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/qa'
+    uses: ./.github/workflows/ci.yml
+
+  images:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - name: backend
+            context: backend
+            target: ""
+          - name: talentosito
+            context: talentosito
+            target: ""
+          - name: pagina-control
+            context: pagina-control
+            target: ""
+          - name: minio
+            context: deploy/storage
+            target: server
+          - name: minio-mc
+            context: deploy/storage
+            target: client
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+          IMAGE_NAME: ${{ matrix.name }}
+        run: echo "name=ghcr.io/${REPOSITORY,,}-$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          target: ${{ matrix.target }}
+          push: true
+          tags: ${{ steps.image.outputs.name }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  hostinger:
+    needs: images
+    runs-on: ubuntu-latest
+    environment: qa
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.QA_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.QA_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Upload release and deploy
+        env:
+          QA_HOST: ${{ vars.QA_HOST }}
+          QA_USER: ${{ vars.QA_USER }}
+          QA_SSH_PORT: ${{ vars.QA_SSH_PORT || '22' }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$QA_HOST" =~ ^[a-zA-Z0-9.-]+$ && "$QA_USER" =~ ^[a-zA-Z0-9_-]+$ && "$QA_SSH_PORT" =~ ^[0-9]+$ ]]
+          remote="$QA_USER@$QA_HOST"
+          target="/opt/talentsmart/releases/$RELEASE_SHA"
+          tar --exclude='*.env' --exclude='backups' -czf release.tar.gz compose.yaml compose.qa.yaml deploy
+          ssh -p "$QA_SSH_PORT" "$remote" "mkdir -p '$target'"
+          scp -P "$QA_SSH_PORT" release.tar.gz "$remote:$target/release.tar.gz"
+          ssh -p "$QA_SSH_PORT" "$remote" "cd '$target' && tar -xzf release.tar.gz && bash deploy/deploy-qa.sh '${REPOSITORY,,}' '$RELEASE_SHA'"
+      - name: Verify public API and voice gateway
+        env:
+          QA_API_URL: ${{ vars.QA_API_URL }}
+        run: |
+          set -euo pipefail
+          [[ "$QA_API_URL" == https://* ]]
+          curl --fail --retry 5 --retry-delay 3 "$QA_API_URL/api/health/ready/"
+          curl --fail --retry 5 --retry-delay 3 "$QA_API_URL/voice/"
+          curl --fail --retry 5 --retry-delay 3 "$QA_API_URL/rfid/health"
+          curl --fail --retry 5 --retry-delay 3 "$QA_API_URL/rfid/api/health/ready/"
+
+  pages:
+    needs: hostinger
+    uses: ./.github/workflows/deploy-pages.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

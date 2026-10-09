@@ -1,0 +1,26 @@
+services:
+  pagina-control:
+    image: ${PAGINA_CONTROL_IMAGE:?Use an immutable pagina-control image}
+  minio:
+    image: ${MINIO_IMAGE:?Use an immutable MinIO image}
+  minio-init:
+    image: ${MINIO_MC_IMAGE:?Use an immutable MinIO client image}
+  backend:
+    image: ${BACKEND_IMAGE:?Use an immutable backend image}
+  talentosito:
+    image: ${TALENTOSITO_IMAGE:?Use an immutable talentosito image}
+  gateway:
+    image: nginx:1.28.0-alpine
+    ports:
+      - "127.0.0.1:${QA_HTTP_PORT:-9083}:8080"
+    volumes:
+      - ./deploy/nginx/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [app]
+    depends_on:
+      pagina-control:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      talentosito:
+        condition: service_healthy
+    restart: unless-stopped

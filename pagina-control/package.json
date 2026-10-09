@@ -1,15 +1,12 @@
 {
   "name": "rfid-web-talentsmart",
-  "version": "1.0.0",
-  "description": "Dashboard web para sistema RFID con ESP32-C6, RC522 y sensor ultrasonico HC-SR04",
-  "main": "server.js",
+  "version": "2.0.0",
+  "private": true,
   "type": "module",
+  "description": "Panel y firmware RFID integrados con Django mediante Compose",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
-  },
-  "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.18.3"
+    "dev": "node server.js",
+    "check": "node --check public/app.js"
   }
 }

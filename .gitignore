@@ -106,7 +106,7 @@ secrets/
 # ==============================================================================
 # Docker
 # ==============================================================================
-.dockerignore
+# Docker build exclusion files are versioned.
 
 # ==============================================================================
 # Build artifacts & binaries
@@ -163,6 +163,9 @@ desktop.ini
 
 
 # Secrets and local configuration
+*.env
+!*.env.example
+deploy/backups/
 .env
 .env.*
 !.env.example
@@ -195,6 +198,11 @@ build/
 *.elf
 *.map
 *.hex
+
+# Keep environment templates, but never generated credentials.
+!deploy/env/
+deploy/env/*
+!deploy/env/*.env.example
 
 # OS and editor noise
 .DS_Store

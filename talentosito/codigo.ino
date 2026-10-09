@@ -359,6 +359,7 @@ void sendQuestion(uint8_t* wav, size_t wavSize) {
   };
   http.collectHeaders(responseHeaders, 3);
   http.addHeader("Content-Type", "audio/wav");
+  http.addHeader("X-Device-Key", TALENTOSITO_DEVICE_KEY);
   http.addHeader("Accept", "application/octet-stream");
 
   const int status = http.POST(wav, wavSize);
