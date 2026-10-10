@@ -15,6 +15,7 @@ switch (command) {
     run('up', '-d', '--wait', 'postgres', 'minio');
     run('run', '--rm', '--no-deps', 'minio-init');
     run('run', '--rm', '--no-deps', 'backend', 'python', 'manage.py', 'migrate', '--noinput');
+    run('run', '--rm', '--no-deps', 'backend', 'python', 'manage.py', 'seed_dev');
     run('up', '-d', '--wait');
     console.log('Frontend: http://localhost:5173/et-talent-smart/ | API: http://localhost:8000');
     break;

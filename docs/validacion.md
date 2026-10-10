@@ -1,5 +1,11 @@
 # Validación de la implementación
 
+## Inicialización SQL dev — 10 de octubre de 2026
+
+- Dos pruebas de carga ejecutadas correctamente en una base PostgreSQL temporal: bloqueo en qa y repetición sin sobrescribir contraseña/horario, con nueve cuentas y vínculo del padre con Andrés.
+- `seed_dev` ejecutado sobre el entorno dev existente, conservando las nueve cuentas documentadas y sus contraseñas.
+- `start` invoca la carga SQL parametrizada después de las migraciones. Sintaxis del helper Node y diferencias de archivos verificadas. No se reinicializaron los volúmenes existentes.
+
 ## Interfaces por rol y datos dev — 10 de octubre de 2026
 
 - Carga `seed_dev` ejecutada en PostgreSQL dev: administrador, coordinador y cuentas de apoyo para docente, auxiliar, estudiantes y padre. Datos ficticios documentados en [ejecución dev](ejecucion-dev.md); sin sobrescribir el superusuario existente.

@@ -16,7 +16,26 @@ node deploy/dev.mjs start
 node deploy/dev.mjs admin
 ```
 
-El primer comando genera `deploy/env/dev.env` con secretos aleatorios si no existe; preserva cualquier configuración existente. Construye imágenes, inicia PostgreSQL y MinIO, crea el bucket privado y su usuario de aplicación, aplica migraciones y arranca los servicios. El segundo solicita usuario, correo y contraseña del administrador de forma interactiva.
+El primer comando genera `deploy/env/dev.env` con secretos aleatorios si no existe; preserva cualquier configuración existente. Construye imágenes, inicia PostgreSQL y MinIO, crea el bucket privado y su usuario de aplicación, aplica migraciones, carga los datos de prueba de dev y arranca los servicios. El segundo es opcional: solicita usuario, correo y contraseña de un superusuario adicional de forma interactiva. El administrador demo ya permite iniciar sesión en la web.
+
+### Inicialización SQL de la base de datos
+
+En un volumen PostgreSQL vacío, la imagen oficial crea el usuario y la base definidos por `POSTGRES_USER`, `POSTGRES_PASSWORD` y `POSTGRES_DB`. Después, `start` ejecuta en este orden:
+
+```sh
+node deploy/dev.mjs compose run --rm --no-deps backend python manage.py migrate --noinput
+node deploy/dev.mjs compose run --rm --no-deps backend python manage.py seed_dev
+```
+
+Las migraciones de Django ejecutan el SQL que crea y actualiza las tablas. Para inspeccionar el SQL de la migración inicial sin ejecutarlo:
+
+```sh
+node deploy/dev.mjs compose exec -T backend python manage.py sqlmigrate school 0001
+```
+
+`seed_dev` ejecuta el INSERT parametrizado de [dev_user.sql](../backend/school/sql/dev_user.sql) para cada cuenta documentada. Utiliza `ON CONFLICT (email) DO NOTHING` y genera el hash de la contraseña con Django antes de enviar los parámetros. Los grupos, cursos, vínculos familiares, horarios y asistencias se crean con el ORM en la misma transacción. El archivo SQL se ejecuta mediante el comando de Django, que proporciona sus parámetros; no se importa directamente con `psql`.
+
+La carga ocurre después de las migraciones porque las tablas de la aplicación todavía no existen durante la inicialización del contenedor PostgreSQL. Los siguientes arranques completan los datos faltantes y conservan los existentes. No hace falta borrar los volúmenes ni crear la base manualmente.
 
 No editar `dev.env.example` para almacenar secretos. El archivo `dev.env` real está excluido de Git y no se copia a las imágenes.
 
@@ -70,13 +89,13 @@ El comando crea estas cuentas ficticias. La contraseña inicial de todas las cue
 | `tliao@demo.talentsmart.test` | Estudiante Tomiko: horario y asistencia propios |
 | `mtinco@demo.talentsmart.test` | Estudiante María: horario y asistencia propios |
 | `alopez@escuelatalentos.edu.pe` | Estudiante Andrés: horario y asistencia propios |
-| `alopez@gmail.com` | Padre de familia: asistencia de Alex, su hijo vinculado |
+| `alopez@gmail.com` | Padre de familia: asistencia de Andrés, su hijo vinculado |
 
 Abrir http://localhost:5173/et-talent-smart/ e iniciar sesión con el correo. El administrador demo es una cuenta de aplicación: no es superusuario ni tiene acceso al admin de Django. El superusuario creado con `node deploy/dev.mjs admin` se conserva y también puede gestionar la web según su rol administrador.
 
-La carga incluye los grupos 4 A y 4 B del año actual, un curso de Matemática, un horario publicado con receso/almuerzo y una asistencia ficticia de Alex para el día actual. No asigna llaves RFID reales. Usa Usuarios para asignar una llave, Grados y secciones para cambiar el grupo y Horarios para editar/publicar los bloques.
+La carga incluye los grupos 4 A y 4 B del año actual, los tres estudiantes en 4 A, un curso de Matemática a cargo de Elvis, un horario publicado con receso/almuerzo y una asistencia ficticia de Tomiko para el día actual. El padre está vinculado a Andrés. No asigna llaves RFID reales. Usa Usuarios para asignar una llave, Grados y secciones para cambiar el grupo y Horarios para editar/publicar los bloques.
 
-Puede repetirse: conserva las cuentas existentes, sus contraseñas, asignaciones y horarios editados. No se ejecuta automáticamente al arrancar ni forma parte del despliegue de qa. Exige settings de desarrollo, `DEBUG=True` y `APP_ENV=dev`; en qa se rechaza. La suite de pruebas usa una base temporal independiente de estos datos.
+Puede repetirse: conserva las cuentas existentes, sus contraseñas, nombres, asignaciones y horarios editados. Se ejecuta automáticamente con `start` y también puede invocarse con `seed`; no forma parte del despliegue de qa. Exige settings de desarrollo, `DEBUG=True` y `APP_ENV=dev`; en qa se rechaza. Las cuentas de una carga demo anterior se conservan; los nuevos correos se crean como cuentas adicionales. La suite de pruebas usa una base temporal independiente de estos datos.
 
 ## Configuración de voz y electrónica
 

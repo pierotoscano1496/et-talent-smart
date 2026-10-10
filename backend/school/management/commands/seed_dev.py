@@ -1,9 +1,11 @@
 import os
 from datetime import datetime, time
+from pathlib import Path
 
 from django.conf import settings
+from django.contrib.auth.hashers import make_password
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 
 from school.models import Attendance, Classroom, Course, Schedule, User
@@ -20,16 +22,18 @@ class Command(BaseCommand):
         group, _ = Classroom.objects.get_or_create(year=timezone.localdate().year, grade="4", section="A")
         Classroom.objects.get_or_create(year=timezone.localdate().year, grade="4", section="B")
         accounts = {}
-        for name, role, first, last in [
-            ("admin", "administrador", "Administrador", "Demo"),
-            ("coordinador", "coordinador", "Coordinación", "Demo"),
-            ("docente", "docente", "Lucía", "Docente Demo"),
-            ("auxiliar", "auxiliar", "Daniel", "Auxiliar Demo"),
-            ("estudiante", "estudiante", "Alex", "Estudiante Demo"),
-            ("estudiante2", "estudiante", "Sam", "Estudiante Demo"),
-            ("padre", "padre", "Andrea", "Familia Demo"),
+        sql = (Path(__file__).resolve().parents[2] / "sql" / "dev_user.sql").read_text(encoding="utf-8")
+        for name, email, role, first, last in [
+            ("admin", "admin@demo.talentsmart.test", "administrador", "Administrador", "Demo"),
+            ("coordinador", "coordinador@demo.talentsmart.test", "coordinador", "Pabel", "Valeriano"),
+            ("docente", "elvisp@demo.talentsmart.test", "docente", "Elvis", "Perez"),
+            ("docente2", "afachin@escuelatalentos.edu.pe", "docente", "Anthony", "Fachín"),
+            ("auxiliar", "cesar@demo.talentsmart.test", "auxiliar", "César", ""),
+            ("estudiante", "tliao@demo.talentsmart.test", "estudiante", "Tomiko", "Liao"),
+            ("estudiante2", "mtinco@demo.talentsmart.test", "estudiante", "María", "Tinco"),
+            ("estudiante3", "alopez@escuelatalentos.edu.pe", "estudiante", "Andrés", "López"),
+            ("padre", "alopez@gmail.com", "padre", "Apoderado de Andrés", "López"),
         ]:
-            email = f"{name}@demo.talentsmart.test"
             user = User.objects.filter(email=email).first()
             if user:
                 if user.role != role:
@@ -38,13 +42,16 @@ class Command(BaseCommand):
             else:
                 if User.objects.filter(username=email).exists():
                     raise CommandError(f"El identificador {email} ya está ocupado.")
-                user = User.objects.create_user(
-                    username=email, email=email, password="TalentDev!2026", role=role,
-                    first_name=first, last_name=last,
-                    classroom=group if role == "estudiante" else None,
-                )
+                with connection.cursor() as cursor:
+                    cursor.execute(sql, {
+                        "email": email, "password_hash": make_password("TalentDev!2026"),
+                        "role": role, "first": first, "last": last,
+                        "classroom_id": group.pk if role == "estudiante" else None,
+                        "joined": timezone.now(),
+                    })
+                user = User.objects.get(email=email)
                 if role == "padre":
-                    user.children.add(accounts["estudiante"])
+                    user.children.add(accounts["estudiante3"])
                 self.stdout.write(self.style.SUCCESS(f"Creado: {email}"))
             accounts[name] = user
         course, _ = Course.objects.get_or_create(name="Matemática (demo)", classroom=group,

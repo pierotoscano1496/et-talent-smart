@@ -19,7 +19,7 @@ node deploy/dev.mjs test
 
 Frontend: http://localhost:5173/et-talent-smart/ · API y administración: http://localhost:8000/admin/
 
-El acceso web usa cuentas creadas por el administrador. En dev, `node deploy/dev.mjs seed` crea cuentas ficticias de prueba; sus credenciales y alcance están en [ejecución dev](docs/ejecucion-dev.md). Qa no recibe estas cuentas. La sesión se conserva solo en memoria y requiere volver a ingresar al recargar la página.
+El acceso web usa cuentas creadas por el administrador. En dev, `node deploy/dev.mjs start` carga los datos de prueba después de las migraciones; también se pueden cargar con `node deploy/dev.mjs seed`. Sus credenciales y la inicialización SQL están en [ejecución dev](docs/ejecucion-dev.md). Qa no recibe estas cuentas. La sesión se conserva solo en memoria y requiere volver a ingresar al recargar la página.
 
 El frontend muestra menús y acciones según el rol: cuentas y llaves para el administrador; asignaciones académicas, horarios y eventos para el coordinador; asistencia y retiros tempranos para el auxiliar; horario, asistencia y justificaciones para el docente; información propia o de hijos para estudiantes y padres. Los permisos también se validan en Django. Los módulos de notas, conducta y comunicados quedan fuera de esta implementación de los casos CU-01 a CU-07.
 
