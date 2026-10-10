@@ -1,16 +1,4 @@
 services:
-  pagina-control:
-    networks: [app]
-    depends_on:
-      backend:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 8
-    restart: unless-stopped
-
   postgres:
     image: postgres:17.6-bookworm
     environment:

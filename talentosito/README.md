@@ -1,6 +1,6 @@
 # Talentosito — Asistente de voz con ESP32-C6
 
-Talentosito es el subproyecto de robótica que atiende las consultas de los estudiantes. El otro subproyecto es [pagina-control](../pagina-control/README.md), responsable del dispositivo y panel RFID de asistencia. Ambos se ejecutan con Compose y utilizan Django como backend escolar común.
+Talentosito es el subproyecto de robótica que atiende las consultas de los estudiantes. El otro subproyecto es [iot](../iot/README.md), responsable del firmware RFID de asistencia. Talentosito tiene un servicio de voz en Compose; iot se carga en el ESP32. Ambos utilizan Django como backend escolar común.
 
 Este directorio reemplaza a `asistente/`. Para ejecutar el conjunto actual usar [dev](../docs/ejecucion-dev.md) o [qa](../docs/despliegue-qa.md). El [contrato actualizado](../docs/api.md) exige `X-Device-Key` en `/ask` y `/transcribe`. En Compose dev, el servicio se publica en el puerto 8001; Django ocupa 8000. Las instrucciones independientes que siguen requieren configurar también `TALENTOSITO_DEVICE_KEY` desde `.env.example`.
 

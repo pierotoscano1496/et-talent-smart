@@ -13,31 +13,13 @@
 #include <ESP32Servo.h>
 
 // =====================================================
-// CONFIGURACIÓN WIFI Y WEB
+// CONFIGURACIÓN WIFI Y API DJANGO
 // =====================================================
 #include "secrets.h"
 
-// =====================================================
-// PINES RFID RC522
-// =====================================================
-#define RFID_SCK   6
-#define RFID_MISO  2
-#define RFID_MOSI  7
-#define RFID_SS    10
-#define RFID_RST   3
+#include "pins.h"
 
 MFRC522 rfid(RFID_SS, RFID_RST);
-
-// =====================================================
-// PINES HC-SR04
-// =====================================================
-#define ULTRASONIC_TRIG 18
-#define ULTRASONIC_ECHO 19
-
-// =====================================================
-// SERVO MG90S
-// =====================================================
-#define SERVO_PIN 4
 
 Servo doorServo;
 
@@ -56,10 +38,14 @@ const int PERSON_DETECT_CM = 70;
 const unsigned long MIN_OPEN_TIME = 5000;
 const unsigned long CLEAR_DELAY = 2500;
 const unsigned long SONAR_INTERVAL = 150;
+const unsigned long WIFI_RECONNECT_INTERVAL = 10000;
+const int HTTP_MAX_ATTEMPTS = 3;
+const unsigned long HTTP_RETRY_DELAY = 500;
 
 QueueHandle_t doorReports = nullptr;
 String bootId;
 unsigned long eventSequence = 0;
+unsigned long lastWiFiReconnectAt = 0;
 bool doorIsOpen = false;
 unsigned long doorOpenedAt = 0;
 unsigned long lastPresenceAt = 0;
@@ -98,6 +84,7 @@ void connectWiFi() {
   Serial.println("Conectando a WiFi...");
 
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   int intentos = 0;
@@ -112,11 +99,27 @@ void connectWiFi() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("WiFi conectado.");
-    Serial.print("IP del ESP32-C6: ");
+    Serial.print("IP del ESP32: ");
     Serial.println(WiFi.localIP());
   } else {
     Serial.println("No se pudo conectar al WiFi.");
+    lastWiFiReconnectAt = millis();
   }
+}
+
+void maintainWiFi() {
+  if (WiFi.status() == WL_CONNECTED) {
+    return;
+  }
+
+  unsigned long now = millis();
+  if (now - lastWiFiReconnectAt < WIFI_RECONNECT_INTERVAL) {
+    return;
+  }
+
+  lastWiFiReconnectAt = now;
+  Serial.println("WiFi desconectado; intentando reconectar.");
+  WiFi.reconnect();
 }
 
 // =====================================================
@@ -164,7 +167,7 @@ void openDoor() {
 }
 
 // =====================================================
-// AVISAR A LA WEB QUE LA PUERTA CERRÓ
+// TELEMETRÍA DEL CIRCUITO HACIA DJANGO
 // =====================================================
 // Each call owns its clients; telemetry runs outside the sensor/servo loop.
 int postJSON(const char* url, const String& payload, String& response) {
@@ -193,6 +196,28 @@ int postJSON(const char* url, const String& payload, String& response) {
   return code;
 }
 
+bool isRetryableHttpStatus(int code) {
+  return code < 0 || code == 408 || code == 429 || code >= 500;
+}
+
+int postJSONWithRetry(const char* url, const String& payload, String& response) {
+  int code = -1;
+  for (int attempt = 1; attempt <= HTTP_MAX_ATTEMPTS; attempt++) {
+    code = postJSON(url, payload, response);
+    if (!isRetryableHttpStatus(code) || attempt == HTTP_MAX_ATTEMPTS) {
+      return code;
+    }
+
+    Serial.printf("HTTP transitorio (%d); reintento %d/%d.\n",
+                  code, attempt, HTTP_MAX_ATTEMPTS - 1);
+    if (WiFi.status() != WL_CONNECTED) {
+      WiFi.reconnect();
+    }
+    delay(HTTP_RETRY_DELAY * attempt);
+  }
+  return code;
+}
+
 void queueDoorState() {
   if (doorReports) xQueueOverwrite(doorReports, &doorIsOpen);
 }
@@ -208,7 +233,7 @@ void reportDoorTask(void*) {
     body["state"] = state ? "abierta" : "cerrada";
     String payload, response;
     serializeJson(body, payload);
-    const int code = postJSON(SERVER_STATE_URL, payload, response);
+    const int code = postJSONWithRetry(SERVER_STATE_URL, payload, response);
     Serial.printf("Estado de puerta HTTP: %d\n", code);
   }
 }
@@ -232,14 +257,10 @@ void closeDoor() {
 }
 
 // =====================================================
-// ENVIAR UID A LA WEB Y VALIDAR AUTORIZACIÓN
+// ENVIAR UID A DJANGO Y VALIDAR AUTORIZACIÓN
 // =====================================================
-bool sendToWebAndCheckAuthorization(String uid) {
+bool registerAttendanceAndCheckAuthorization(String uid) {
   // No offline authorizations; a failed request requires presenting the card again.
-  if (WiFi.status() != WL_CONNECTED) {
-    WiFi.reconnect();
-    return false;
-  }
   JsonDocument body;
   body["uid"] = uid;
   body["device_id"] = DEVICE_ID;
@@ -249,13 +270,19 @@ bool sendToWebAndCheckAuthorization(String uid) {
   body["millis"] = millis();
   String payload, response;
   serializeJson(body, payload);
-  const int code = postJSON(SERVER_URL, payload, response);
+  const int code = postJSONWithRetry(SERVER_URL, payload, response);
   Serial.printf("Lectura RFID HTTP: %d\n", code);
   if (code != HTTP_CODE_OK) return false;
   JsonDocument result;
-  if (deserializeJson(result, response)) return false;
-  return result["ok"].is<bool>() && result["ok"].as<bool>() &&
-         result["authorized"].is<bool>() && result["authorized"].as<bool>();
+  if (deserializeJson(result, response)) {
+    Serial.println("Respuesta RFID invalida: JSON no valido.");
+    return false;
+  }
+  if (!result["ok"].is<bool>() || !result["authorized"].is<bool>()) {
+    Serial.println("Respuesta RFID invalida: faltan campos booleanos.");
+    return false;
+  }
+  return result["ok"].as<bool>() && result["authorized"].as<bool>();
 }
 
 // =====================================================
@@ -326,7 +353,10 @@ void setup() {
 
   connectWiFi();
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-  bootId = String(esp_random(), HEX) + String(esp_random(), HEX);
+  char bootNonce[17];
+  snprintf(bootNonce, sizeof(bootNonce), "%08lx%08lx",
+           static_cast<unsigned long>(esp_random()), static_cast<unsigned long>(esp_random()));
+  bootId = bootNonce;
   doorReports = xQueueCreate(1, sizeof(bool));
   if (doorReports) {
     queueDoorState();
@@ -353,6 +383,7 @@ void loop() {
   updateDoorSafety();
   // Avoid blocking HTTP or Wi-Fi reconnection while the passage is open.
   if (doorIsOpen) { delay(20); return; }
+  maintainWiFi();
 
   if (!rfid.PICC_IsNewCardPresent()) {
     delay(20);
@@ -374,7 +405,7 @@ void loop() {
   if (uid == lastUID && now - lastReadTime < DUPLICATE_DELAY) {
     Serial.println("Lectura repetida ignorada.");
   } else {
-    bool authorized = sendToWebAndCheckAuthorization(uid);
+    bool authorized = registerAttendanceAndCheckAuthorization(uid);
 
     if (authorized) {
       Serial.println("Usuario autorizado. Abriendo puerta.");

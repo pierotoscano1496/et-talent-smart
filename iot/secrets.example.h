@@ -1,9 +1,9 @@
 #pragma once
 const char* WIFI_SSID = "NOMBRE_DE_TU_WIFI";
 const char* WIFI_PASSWORD = "PASSWORD_DE_TU_WIFI";
-// dev: IP LAN de la computadora; qa: https://DOMINIO_API/rfid/api/...
-const char* SERVER_URL = "http://IP_DE_TU_PC:3000/api/rfid/registro";
-const char* SERVER_STATE_URL = "http://IP_DE_TU_PC:3000/api/puerta/estado";
+// Conexión directa a Django. qa: https://DOMINIO_API/api/...
+const char* SERVER_URL = "http://IP_DE_TU_PC:8000/api/rfid/registro";
+const char* SERVER_STATE_URL = "http://IP_DE_TU_PC:8000/api/puerta/estado";
 // Copiar RFID_API_KEY del archivo privado del MISMO ambiente.
 const char* API_KEY = "REEMPLAZAR_CON_RFID_API_KEY";
 const char* DEVICE_ID = "ESP32C6_RFID_01";

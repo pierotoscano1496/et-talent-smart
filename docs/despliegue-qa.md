@@ -23,7 +23,7 @@ La contraseña inicial de PostgreSQL se aplica al crear su volumen: para rotarla
 
 Asignar un dominio de API, por ejemplo `api-qa.example.org`, al VPS. Integrarlo en el proxy TLS existente usando `deploy/nginx/host.example.conf` como referencia, comprobar la configuración antes de recargar y usar un certificado válido.
 
-El gateway de este proyecto publica **solo `127.0.0.1:9083`**; enruta `/voice/` a Talentosito, `/rfid/` al panel/gateway de pagina-control y el resto a Django. No abre 80/443 ni administra los certificados del servidor. El proxy del host debe reenviar `Host` y establecer `X-Forwarded-Proto: https`. PostgreSQL, MinIO y su consola no publican puertos.
+El gateway de este proyecto publica **solo `127.0.0.1:9083`**; enruta `/voice/` a Talentosito y el resto a Django. No abre 80/443 ni administra los certificados del servidor. El proxy del host debe reenviar `Host` y establecer `X-Forwarded-Proto: https`. PostgreSQL, MinIO y su consola no publican puertos.
 
 En `qa.env`:
 
@@ -33,13 +33,13 @@ En `qa.env`:
 - `DJANGO_SETTINGS_MODULE=config.settings.qa`; no activar DEBUG.
 - `GROQ_API_KEY`: necesaria únicamente para llamadas reales de voz.
 
-El panel RFID se abre en `https://DOMINIO_API_QA/rfid/`. El firmware utiliza `https://DOMINIO_API_QA/rfid/api/rfid/registro` y `https://DOMINIO_API_QA/rfid/api/puerta/estado`, con la clave RFID de qa; ver [configuración del dispositivo](../pagina-control/README.md). No se publica el puerto 3000 en Hostinger.
+El ESP32 utiliza directamente `https://DOMINIO_API_QA/api/rfid/registro` y `https://DOMINIO_API_QA/api/puerta/estado`, con la clave RFID de qa. El firmware se compila y carga físicamente; no se despliega mediante Compose ni Pages. Ver [guía del circuito](../iot/README.md).
 
 Para la electrónica en qa, utilizar HTTPS y validar el certificado del servidor con las capacidades de la biblioteca ESP32. No desactivar la validación TLS. La compilación y prueba en el dispositivo físico se realizan por separado.
 
 ## Imágenes y GitHub Actions
 
-El registro seleccionado es **GHCR**. Las imágenes de backend, Talentosito, pagina-control, MinIO y su cliente usan como etiqueta el SHA del commit desplegado. Configurar en el servidor un login de lectura a GHCR para esos paquetes, mediante una credencial de alcance limitado y `docker login ghcr.io --password-stdin`. No pasar la contraseña como argumento de línea de comandos.
+El registro seleccionado es **GHCR**. Las imágenes de backend, Talentosito, MinIO y su cliente usan como etiqueta el SHA del commit desplegado. Configurar en el servidor un login de lectura a GHCR para esos paquetes, mediante una credencial de alcance limitado y `docker login ghcr.io --password-stdin`. No pasar la contraseña como argumento de línea de comandos.
 
 MinIO comunitario se construye desde etiquetas fijadas del código oficial porque sus imágenes precompiladas no estuvieron disponibles durante la implementación. Su [repositorio oficial está archivado](https://github.com/minio/minio): la compilación propia resuelve la distribución, pero no proporciona mantenimiento upstream. Las versiones utilizadas están en `deploy/storage/Dockerfile`; revisar esta dependencia antes de ampliar qa a otros ambientes.
 
@@ -50,7 +50,7 @@ En el repositorio GitHub:
 3. Añadir a ese entorno los secretos `QA_SSH_KEY` y `QA_SSH_KNOWN_HOSTS`. Obtener la clave pública/huella del host mediante un canal confiable; no aceptar automáticamente una huella obtenida durante el despliegue.
 4. En el entorno **github-pages**, definir también `QA_API_URL` y permitir la rama `qa`.
 5. Dar al workflow permiso de escritura de paquetes y a Pages los permisos de despliegue.
-6. Crear/promover la rama **qa**. Cada push ejecuta pruebas, construye las cinco imágenes, despliega Hostinger y, solo si responde correctamente, publica Pages. La ejecución manual también requiere seleccionar `qa`.
+6. Crear/promover la rama **qa**. Cada push ejecuta pruebas, construye las cuatro imágenes, despliega Hostinger y, solo si responde correctamente, publica Pages. La ejecución manual también requiere seleccionar `qa`.
 
 `main` y `dev` ejecutan CI, pero no publican qa. El workflow anterior de Pages pasa a ser reutilizable y ya no compite con el despliegue coordinado. La compilación usa `frontend/package-lock.json` y publica `frontend/dist`.
 
@@ -81,8 +81,6 @@ Verificar:
 ```sh
 curl --fail https://DOMINIO_API_QA/api/health/ready/
 curl --fail https://DOMINIO_API_QA/voice/
-curl --fail https://DOMINIO_API_QA/rfid/health
-curl --fail https://DOMINIO_API_QA/rfid/api/health/ready/
 ```
 
 Después comprobar en Pages: login con una cuenta real, consulta del horario publicado, permisos de asistencia y descarga de reporte. Probar RFID y voz desde los dispositivos. El endpoint de salud de voz indica que el proceso responde; no garantiza que el proveedor Groq esté configurado o que el audio físico funcione.
@@ -91,16 +89,16 @@ Para detener únicamente esta aplicación conservando datos: `dc stop`. Para rei
 
 ## Respaldos y restauración
 
-Cada despliegue crea `/opt/talentsmart/backups/FECHA-COMMIT/database.dump` y `files.tar` con permisos restringidos. El dump incluye metadatos, permisos y registros de Django; el tar contiene los objetos del bucket. Para una copia manual consistente, pausar gateway/pagina-control/backend/Talentosito, mantener PostgreSQL y MinIO activos y ejecutar en Bash:
+Cada despliegue crea `/opt/talentsmart/backups/FECHA-COMMIT/database.dump` y `files.tar` con permisos restringidos. El dump incluye metadatos, permisos y registros de Django; el tar contiene los objetos del bucket. Para una copia manual consistente, pausar gateway/backend/Talentosito, mantener PostgreSQL y MinIO activos y ejecutar en Bash:
 
 ```sh
 umask 077
 backup="/opt/talentsmart/backups/manual-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$backup"
-dc stop gateway pagina-control backend talentosito
+dc stop gateway backend talentosito
 dc exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup/database.dump"
 dc run --rm -T --no-deps backend python manage.py backup_storage > "$backup/files.tar"
-dc up -d --wait backend talentosito pagina-control gateway
+dc up -d --wait backend talentosito gateway
 ```
 
 Copiar los respaldos a un destino externo protegido; su conservación y periodicidad fuera de despliegues deben configurarse según la operación del colegio. Conservar de manera separada y segura la configuración y claves necesarias para restaurar.
@@ -108,17 +106,17 @@ Copiar los respaldos a un destino externo protegido; su conservación y periodic
 Para restaurar, elegir conscientemente un respaldo y una versión de aplicación compatibles, pausar los escritores y usar una base vacía de restauración o reemplazar deliberadamente la base de qa. El siguiente comando **reemplaza los objetos de la base objetivo**:
 
 ```sh
-dc stop gateway pagina-control backend talentosito
+dc stop gateway backend talentosito
 dc exec -T postgres sh -c 'pg_restore --exit-on-error --clean --if-exists --no-owner -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < /RUTA/database.dump
 dc run --rm -T --no-deps backend python manage.py restore_storage < /RUTA/files.tar
-dc up -d --wait backend talentosito pagina-control gateway
+dc up -d --wait backend talentosito gateway
 ```
 
 La restauración de archivos escribe objetos por nombre y no borra objetos sobrantes; estos no quedan accesibles sin metadatos/permisos de Django. Para una recuperación exacta, utilizar un bucket nuevo configurado e inicializado con su política antes de importar. Probar el respaldo en un conjunto aislado antes de sobrescribir qa.
 
 ## Reversión y fallos
 
-Conservar la entrega anterior y su `release.env`. Si la migración es compatible, operar desde esa entrega con su archivo de imágenes y volver a levantar backend/Talentosito/pagina-control/gateway. Si no es compatible, restaurar primero el respaldo y usar la versión correspondiente; cambiar solo la imagen no revierte el esquema.
+Conservar la entrega anterior y su `release.env`. Si la migración es compatible, operar desde esa entrega con su archivo de imágenes y volver a levantar backend/Talentosito/gateway. Si no es compatible, restaurar primero el respaldo y usar la versión correspondiente; cambiar solo la imagen no revierte el esquema.
 
 El frontend se publica después del backend: si Pages falla, el frontend anterior sigue activo. La API debe mantener compatibilidad durante esa ventana. Se puede volver a ejecutar el trabajo de Pages del despliegue compatible; no promover código antiguo con migraciones incompatibles sin revisar primero el estado de datos.
 

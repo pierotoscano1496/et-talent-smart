@@ -26,7 +26,9 @@ Entorno de verificación: Windows, Node.js 24.21, Docker Engine 29.8.1, Compose 
 
 No se han validado todavía el servidor Hostinger real, los certificados/dominios de qa, un despliegue ejecutado por GitHub Actions, la restauración de un respaldo con datos institucionales, llamadas reales a Groq ni la operación en el ESP32 físico. Las guías [dev](ejecucion-dev.md) y [qa](despliegue-qa.md) indican cómo continuar estas verificaciones.
 
-## Integración de pagina-control — 9 de octubre de 2026
+## Validación histórica del panel RFID — 9 de octubre de 2026
+
+Estas comprobaciones corresponden al panel provisional, retirado después al definir iot como firmware IoT. Sus rutas e imagen ya no forman parte de la arquitectura vigente.
 
 | Comprobación | Resultado |
 | --- | --- |
@@ -34,7 +36,7 @@ No se han validado todavía el servidor Hostinger real, los certificados/dominio
 | Django sobre PostgreSQL | 18 pruebas correctas: incluye reintentos entre días, llaves revocadas/reasignadas, permisos de auxiliar/administrador y telemetría independiente de asistencia |
 | Talentosito | 14 pruebas correctas; proveedor simulado |
 | MinIO y archivos privados | Escritura/lectura/borrado y API correctos; datos temporales revertidos |
-| Imagen pagina-control y arranque Compose dev | Correctos; panel disponible en localhost:3000 |
+| Imagen del panel provisional y arranque Compose dev | Correctos; panel disponible en localhost:3000 |
 | Panel en Edge sin ventana | Creación de estudiante, búsqueda/asignación de llave, monitoreo del auxiliar, rechazo del rol estudiante y cierre de sesión correctos; cuentas temporales eliminadas |
 | Configuración Compose qa | Válida con las cinco referencias de imágenes |
 | Gateway qa probado localmente contra servicios dev | /rfid redirige a /rfid/; panel, JS, salud y proxy API responden 200; monitoreo sin sesión responde 401; secrets.h y database.json responden 404 |
@@ -43,4 +45,20 @@ No se han validado todavía el servidor Hostinger real, los certificados/dominio
 
 La prueba del gateway utilizó temporalmente el puerto local 19083 y se retiró su contenedor al terminar; no es un despliegue en Hostinger.
 
-El intento de compilación usó ESP32 Arduino 3.3.12, ArduinoJson 7.4.3, MFRC522 1.4.12 y ESP32Servo 3.2.1, con secretos de ejemplo y bibliotecas en un directorio temporal. El compilador falló antes de validar el firmware: `riscv32-esp-elf-g++` no pudo ejecutar `cc1plus.exe` (`CreateProcess: No such file or directory`) de la herramienta `esp-rv32/2601`. Se requiere reparar esa instalación o compilar en un entorno Arduino funcional y luego verificar el lector, TLS, sensor y servo en la maqueta.
+El intento inicial de compilación usó ESP32 Arduino 3.3.12, ArduinoJson 7.4.3, MFRC522 1.4.12 y ESP32Servo 3.2.1, con secretos de ejemplo y bibliotecas en un directorio temporal. El compilador no pudo ejecutar `cc1plus.exe` (`CreateProcess: No such file or directory`) de la herramienta `esp-rv32/2601`. Los resultados posteriores se detallan a continuación.
+
+## Adaptación definitiva como capa IoT — 9 de octubre de 2026
+
+Se retiraron el panel web, servidor, paquetes npm, JSON de prueba, Dockerfile y Nginx de iot. También se retiraron su servicio Compose, imagen de qa, rutas del gateway y contenedor local. El ESP32 utiliza directamente la API Django. La carpeta contiene el sketch, implementación C++, perfiles de pines, plantilla privada y guía del circuito.
+
+| Comprobación | Resultado |
+| --- | --- |
+| ESP32 clásico (`esp32:esp32:esp32`) | Compilación correcta: 1 060 367 bytes de programa (80 %); 49 388 bytes de variables globales (15 %) |
+| ESP32-C6 (`esp32:esp32:esp32c6`) | Compilación intentada; Windows bloqueó un proceso de la herramienta con error 4551: «Una directiva de Control de aplicaciones bloqueó este archivo» |
+| Django / PostgreSQL | 18 pruebas correctas; migraciones consistentes |
+| Talentosito | 14 pruebas correctas |
+| MinIO y archivos privados | Comprobaciones correctas; datos de prueba revertidos |
+| Compose dev / qa sin servicio RFID web | Configuraciones válidas; contenedor obsoleto retirado |
+| GitHub Actions y Bash | actionlint 1.7.7 y bash -n sin errores |
+
+La compilación utilizó Arduino ESP32 3.3.12 y las mismas bibliotecas del intento inicial, copiando los fuentes y secretos de ejemplo a una carpeta temporal. No se modificaron las políticas de Windows para evadir el bloqueo de C6. Falta completar esa compilación en un entorno autorizado y verificar ambas variantes en hardware; no se cargó firmware en ninguna placa.

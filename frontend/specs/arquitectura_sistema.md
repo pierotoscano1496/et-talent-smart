@@ -4,7 +4,7 @@
 
 Este documento registra la arquitectura acordada para la aplicación web y su integración con la electrónica. Complementa [casos_uso_1.md](casos_uso_1.md) e [info_usuarios.md](info_usuarios.md). La separación de servicios, API Django, Compose, configuración y workflows ya cuentan con implementación en el repositorio. Las secciones siguientes conservan el contexto de diseño; las instrucciones operativas vigentes están en [ejecución dev](../../docs/ejecucion-dev.md), [despliegue qa](../../docs/despliegue-qa.md) y [contrato de API](../../docs/api.md). El despliegue real en Hostinger requiere aprovisionamiento externo y aún no se ha ejecutado.
 
-Decisiones de implementación: rama `qa` para promoción; GHCR como registro; sesiones Bearer de 8 horas en memoria del frontend; gateway HTTP solo en loopback 9083 detrás del proxy TLS del host; RFID de pagina-control hacia Django; Talentosito conserva FastAPI. MinIO se construye desde código fuente fijado porque las imágenes comunitarias consultadas no estaban disponibles; su repositorio upstream está archivado, como se detalla en la guía de qa.
+Decisiones de implementación: rama `qa` para promoción; GHCR como registro; sesiones Bearer de 8 horas en memoria del frontend; gateway HTTP solo en loopback 9083 detrás del proxy TLS del host; RFID de iot hacia Django; Talentosito conserva FastAPI. MinIO se construye desde código fuente fijado porque las imágenes comunitarias consultadas no estaban disponibles; su repositorio upstream está archivado, como se detalla en la guía de qa.
 
 Solo se contemplan dos ambientes: **dev**, ejecutado en la máquina local, y **qa**, publicado en GitHub Pages y Hostinger. No se define un ambiente de producción en esta etapa.
 
@@ -17,7 +17,7 @@ Solo se contemplan dos ambientes: **dev**, ejecutado en la máquina local, y **q
 | Datos estructurados | PostgreSQL | Usuarios, asignaciones RFID, grados, secciones, cursos, horarios, marcaciones, incidencias y metadatos de archivos. |
 | Archivos | MinIO | Almacenamiento de documentos e imágenes; el backend controla quién puede subirlos o descargarlos. |
 | Asistente de electrónica | `talentosito/` (antes `asistente/`) | Procesamiento de voz y comunicación con el dispositivo electrónico, manteniendo su integración con la aplicación web. |
-| Control RFID | `pagina-control/`: ESP32, lector y panel servido por Nginx | Captura de marcaciones, monitoreo por auxiliar y asignación de llaves por administrador; Django consolida la asistencia diaria. |
+| Capa IoT RFID | `iot/`: firmware para ESP32/ESP32-C6, RC522, HC-SR04 y servo | Envía lecturas y estado directamente a Django; se compila y carga en la placa. Sin web, base local ni Docker. |
 
 El frontend se comunica con Django mediante HTTPS en qa. No accede directamente a PostgreSQL ni recibe credenciales de MinIO. Django es la autoridad sobre permisos y reglas de negocio, incluidos los accesos originados desde Talentosito o desde la electrónica.
 
@@ -36,14 +36,12 @@ Flujo objetivo:
 3. Django verifica el alcance de ese usuario antes de devolver información. Un identificador enviado libremente por el dispositivo no basta para autorizar la consulta.
 4. Las marcaciones RFID llegan a Django, que identifica al estudiante, conserva la lectura y consolida su asistencia diaria.
 
-Existen dos subproyectos de robótica: **Talentosito**, asistente de consultas de los estudiantes, y **pagina-control**, dispositivo y panel RFID para la asistencia escolar. Ambos forman parte de la arquitectura. El panel RFID se sirve con Nginx y consume la misma API Django; se retiró el servidor Express con persistencia JSON. El firmware conserva el control local del servo y sensor; informa a Django del último estado comandado, sin permitir órdenes remotas de apertura/cierre desde el panel. La autorización de una lectura no demuestra apertura física ni paso efectivo del estudiante.
+Existen dos subproyectos de robótica: **Talentosito**, asistente de consultas de los estudiantes, y **iot**, capa IoT del circuito RFID. El ESP32 consume directamente la API Django y conserva el control local del servo y sensor. La gestión web pertenece a frontend/backend. iot no tiene panel, servidor, almacenamiento JSON, imagen Docker ni servicio Compose. La autorización registra asistencia diaria; no demuestra apertura física ni paso efectivo del estudiante.
 
 ```mermaid
 flowchart LR
   Web[Frontend · GitHub Pages] --> API[Django]
-  RFID[ESP32 RFID] --> Panel[pagina-control · Nginx]
-  Aux[Administrador / auxiliar] --> Panel
-  Panel --> API
+  RFID[iot · ESP32 RFID] --> API
   Voz[Dispositivo de voz] --> Tal[Talentosito · FastAPI]
   Tal --> API
   API --> DB[(PostgreSQL)]
@@ -60,7 +58,7 @@ Se deberá documentar el contrato de integración: rutas, autenticación, format
 | Django | Contenedor local con configuración de desarrollo | Contenedor en Hostinger, servidor WSGI/ASGI y `DEBUG=False` |
 | PostgreSQL y MinIO | Contenedores y volúmenes locales | Contenedores y volúmenes persistentes propios de qa |
 | Talentosito | Servicio local en Compose y electrónica de prueba | Servicio en Compose en Hostinger, con acceso configurado para la electrónica |
-| pagina-control | Nginx en Compose, panel y API por localhost:3000 | Nginx en Compose, panel y API por /rfid/ en el dominio del backend |
+| iot | Firmware con IP LAN de Django; carga local por USB | Firmware con URL HTTPS de Django; carga por USB en la placa |
 | Configuración | Archivo local no versionado | Archivo privado del servidor y secretos de despliegue en GitHub Actions |
 | Datos y credenciales | Exclusivos de dev | Exclusivos de qa |
 
@@ -70,7 +68,7 @@ La publicación web en Pages corresponde a qa, aunque el trabajo de código use 
 
 Se implementaron un archivo base `compose.yaml` y ajustes `compose.dev.yaml` y `compose.qa.yaml`. El conjunto base contiene los servicios comunes; el frontend con Vite solo se incorpora en dev.
 
-Servicios implementados: `backend`, `postgres`, `minio`, `minio-init`, `talentosito` y `pagina-control`; además, `frontend` en dev y un proxy inverso para el acceso HTTPS de qa, cuya ubicación dependerá de la infraestructura existente.
+Servicios implementados: `backend`, `postgres`, `minio`, `minio-init`, `talentosito`; además, `frontend` en dev y un proxy inverso para el acceso HTTPS de qa, cuya ubicación dependerá de la infraestructura existente.
 
 - Usar proyectos Compose separados, por ejemplo `talentsmart-dev` y `talentsmart-qa`, con redes y volúmenes propios.
 - Comunicar contenedores por nombre de servicio, no por IP fija. Dentro de un contenedor, `localhost` no identifica otro servicio.
@@ -93,7 +91,7 @@ La siguiente distribución es una propuesta, no una comprobación de disponibili
 | Frontend Vite | 5173 | `127.0.0.1:5173` | GitHub Pages; sin contenedor frontend en Hostinger |
 | Django | 8000 | `127.0.0.1:8000` | A través del proxy HTTPS; sin publicación directa general |
 | Talentosito | 8000, en su propio contenedor | Puerto del host 8001; acceso LAN configurable para el ESP32 | A través del proxy HTTPS y autenticación del dispositivo |
-| pagina-control | 8080 | Puerto del host 3000; acceso LAN configurable para el ESP32 | /rfid/ mediante el gateway HTTPS, sin puerto adicional del host |
+| iot | No aplica; cliente IoT | Consume Django en 8000, sin servidor propio | Consume /api/rfid/registro mediante HTTPS, sin puerto propio |
 | PostgreSQL | 5432 | Sin publicación por defecto | Solo red privada de datos |
 | MinIO API | 9000 | Solo red de contenedores | Solo red privada de datos |
 | MinIO consola | 9001, configurado explícitamente | Publicación opcional en loopback | Sin acceso público; administración mediante acceso restringido |
@@ -119,11 +117,10 @@ talentosito/                 # Antes asistente/
   Dockerfile
   .dockerignore
   secrets.example.h         # Plantilla del firmware, sin credenciales reales
-pagina-control/
-  Dockerfile
-  nginx.conf
-  public/
+iot/
+  iot.ino
   esp32.cpp
+  pins.h
   secrets.example.h
 frontend/
   .env.example              # Solo configuración pública
@@ -158,10 +155,10 @@ El `.gitignore` ya permite versionar `.dockerignore` y las plantillas de `deploy
 
 ## 7. Despliegue de qa con GitHub Actions
 
-Se implementó un flujo que coordina la publicación del backend, Talentosito y pagina-control en Hostinger y del frontend en GitHub Pages.
+Se implementó un flujo que coordina la publicación del backend y Talentosito en Hostinger y del frontend en GitHub Pages.
 
 1. Obtener el código y ejecutar las verificaciones de frontend, Django y Talentosito.
-2. Construir las imágenes del backend, Talentosito, pagina-control, MinIO y su cliente, identificadas con el commit, y publicarlas en GHCR.
+2. Construir las imágenes del backend, Talentosito, MinIO y su cliente, identificadas con el commit, y publicarlas en GHCR.
 3. Acceder al servidor con una cuenta de despliegue dedicada y verificación de la identidad SSH del host.
 4. Actualizar únicamente el proyecto Compose `talentsmart-qa`, usando la configuración privada ya provisionada en Hostinger.
 5. Comprobar las dependencias, realizar una copia de respaldo antes de migraciones y ejecutar las migraciones de Django de forma controlada, sin lanzarlas en paralelo desde cada instancia.
@@ -207,5 +204,5 @@ Cada guía deberá contener comandos comprobados desde un checkout limpio, resul
 - Confirmar las capacidades y recursos del servidor Hostinger, los puertos disponibles y el proxy HTTPS existente.
 - Configurar los dominios reales y las credenciales de qa; el mecanismo web ya utiliza sesiones Bearer.
 - Revisar la continuidad de MinIO comunitario archivado; las imágenes de esta implementación se construyen desde versiones fijadas.
-- Compilar y verificar en dispositivos físicos el firmware RFID de `pagina-control/`, y definir el emparejamiento de sesiones personales de Talentosito. Django ya dispone de la API RFID y la voz tiene autenticación de dispositivo/servicio.
+- Compilar y verificar en dispositivos físicos el firmware RFID de `iot/`, y definir el emparejamiento de sesiones personales de Talentosito. Django ya dispone de la API RFID y la voz tiene autenticación de dispositivo/servicio.
 - Definir la retención y destino externo de respaldos, y ensayar restauración/reversión con los datos reales de qa.

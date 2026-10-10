@@ -16,7 +16,7 @@ switch (command) {
     run('run', '--rm', '--no-deps', 'minio-init');
     run('run', '--rm', '--no-deps', 'backend', 'python', 'manage.py', 'migrate', '--noinput');
     run('up', '-d', '--wait');
-    console.log('Frontend: http://localhost:5173/et-talent-smart/ | API: http://localhost:8000 | RFID: http://localhost:3000');
+    console.log('Frontend: http://localhost:5173/et-talent-smart/ | API: http://localhost:8000');
     break;
   case 'test':
     run('run', '--rm', '--no-deps', '-e', 'DJANGO_SETTINGS_MODULE=config.settings.test', '-e', 'TEST_POSTGRES=1', 'backend', 'python', 'manage.py', 'test');

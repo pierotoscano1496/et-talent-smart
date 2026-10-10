@@ -31,9 +31,6 @@ jobs:
           - name: talentosito
             context: talentosito
             target: ""
-          - name: pagina-control
-            context: pagina-control
-            target: ""
           - name: minio
             context: deploy/storage
             target: server
@@ -101,8 +98,6 @@ jobs:
           [[ "$QA_API_URL" == https://* ]]
           curl --fail --retry 5 --retry-delay 3 "$QA_API_URL/api/health/ready/"
           curl --fail --retry 5 --retry-delay 3 "$QA_API_URL/voice/"
-          curl --fail --retry 5 --retry-delay 3 "$QA_API_URL/rfid/health"
-          curl --fail --retry 5 --retry-delay 3 "$QA_API_URL/rfid/api/health/ready/"
 
   pages:
     needs: hostinger

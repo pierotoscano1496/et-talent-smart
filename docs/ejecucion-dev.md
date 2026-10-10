@@ -26,7 +26,6 @@ No editar `dev.env.example` para almacenar secretos. El archivo `dev.env` real e
 | Django admin | http://localhost:8000/admin/ |
 | API disponible | http://localhost:8000/api/health/ready/ |
 | Talentosito | http://localhost:8001/ |
-| Panel y gateway RFID | http://localhost:3000/ |
 | PostgreSQL / MinIO | Red privada de Compose, sin puertos publicados |
 
 En el admin, crear cuentas con correo único, contraseña, rol y estado activo. Crear grados/secciones y cursos; asignar a los estudiantes su aula y llave RFID. El login del frontend utiliza el correo, aunque el superusuario tenga un nombre de usuario diferente.
@@ -39,17 +38,17 @@ Añadir `GROQ_API_KEY` a `deploy/env/dev.env` y volver a ejecutar `node deploy/d
 
 Copiar las plantillas de firmware a `secrets.h` en la misma carpeta que el sketch:
 
-- RFID: `pagina-control/secrets.example.h`.
+- RFID: `iot/secrets.example.h`.
 - Voz: `talentosito/secrets.example.h`.
 - Prueba STT: `talentosito/esp32_stt_test/secrets.example.h`.
 
-Completar Wi-Fi, IP LAN del equipo y `TALENTOSITO_DEVICE_KEY` para las pruebas de voz. Para RFID, completar `pagina-control/secrets.h` con `RFID_API_KEY` del mismo ambiente y las URLs del puerto 3000. No copiar claves de PostgreSQL, MinIO o Groq al dispositivo.
+Completar Wi-Fi, IP LAN del equipo y `TALENTOSITO_DEVICE_KEY` para las pruebas de voz. Para RFID, completar `iot/secrets.h` con `RFID_API_KEY` del mismo ambiente y las URLs de Django en el puerto 8000. No copiar claves de PostgreSQL, MinIO o Groq al dispositivo.
 
-`pagina-control/` participa en este arranque. Su panel usa las cuentas de Django: administrador para crear estudiantes y asignar llaves; auxiliar para monitorear asistencia. Ver [su guía de firmware](../pagina-control/README.md).
+La capa IoT iot se compila y carga en el ESP32; no interviene en Compose. Las cuentas y llaves se gestionan en Django admin/API. Ver [circuito, pines y carga del firmware](../iot/README.md).
 
-Por defecto las API solo escuchan en loopback. Para el ESP32, configurar `DEV_BIND_IP=0.0.0.0`, añadir la IP LAN a `DJANGO_ALLOWED_HOSTS`, recrear backend/Talentosito/pagina-control y permitir 3000/8000/8001 en el firewall de la red local. El ESP32 debe estar en esa red. `localhost` en el ESP32 identifica al propio dispositivo, no al equipo.
+Por defecto las API solo escuchan en loopback. Para el ESP32, configurar `DEV_BIND_IP=0.0.0.0`, añadir la IP LAN a `DJANGO_ALLOWED_HOSTS`, recrear backend/Talentosito y permitir 8000/8001 en el firewall de la red local. El ESP32 debe estar en esa red. `localhost` en el ESP32 identifica al propio dispositivo, no al equipo.
 
-Las rutas y cabeceras se describen en [api.md](api.md). La API valida el UID y registra la asistencia. El servo y sensor se controlan localmente en el firmware de `pagina-control/`; Django recibe telemetría de estado sin enviar órdenes físicas.
+Las rutas y cabeceras se describen en [api.md](api.md). La API valida el UID y registra la asistencia. El servo y sensor se controlan localmente en el firmware de `iot/`; Django recibe telemetría de estado sin enviar órdenes físicas.
 
 ## Desarrollo y pruebas
 
@@ -63,7 +62,7 @@ node deploy/dev.mjs compose exec backend python manage.py migrate
 npm --prefix frontend run build
 ```
 
-Las pruebas incluyen roles, sesiones expiradas, aislamiento de estudiantes, publicación de horarios, filtros, incidencias, RFID y voz sin llamadas al proveedor. `smoke_test` comprueba escritura/lectura/borrado contra el MinIO real con un objeto temporal único. El frontend y los servicios Python tienen recarga de código; los archivos públicos de pagina-control están montados en modo lectura y basta recargar el navegador; los cambios de dependencias requieren reconstrucción.
+Las pruebas incluyen roles, sesiones expiradas, aislamiento de estudiantes, publicación de horarios, filtros, incidencias, RFID y voz sin llamadas al proveedor. `smoke_test` comprueba escritura/lectura/borrado contra el MinIO real con un objeto temporal único. El frontend y los servicios Python tienen recarga de código; los cambios de dependencias requieren reconstrucción.
 
 Si solo se necesita ejecutar pruebas unitarias de Django sin PostgreSQL iniciado:
 

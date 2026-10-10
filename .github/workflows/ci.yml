@@ -31,18 +31,15 @@ jobs:
           set -euo pipefail
           dc() { docker compose --env-file deploy/env/dev.env -p talentsmart-ci -f compose.yaml -f compose.dev.yaml "$@"; }
           dc config --quiet
-          node --check pagina-control/public/app.js
-          dc build backend talentosito pagina-control minio minio-init
+          dc build backend talentosito minio minio-init
           dc up -d --wait postgres minio
           dc run --rm minio-init
           dc run --rm --no-deps backend python manage.py migrate --noinput
           dc run --rm --no-deps -e DJANGO_SETTINGS_MODULE=config.settings.test -e TEST_POSTGRES=1 backend python manage.py test
           dc run --rm --no-deps backend python manage.py makemigrations --check --dry-run
           dc run --rm --no-deps talentosito python -m unittest discover -s tests -v
-          dc up -d --wait backend talentosito pagina-control
+          dc up -d --wait backend talentosito
           dc exec -T backend python manage.py smoke_test
-          curl --fail http://localhost:3000/health
-          curl --fail http://localhost:3000/api/health/ready/
       - name: Stop disposable CI services
         if: always()
         run: docker compose --env-file deploy/env/dev.env -p talentsmart-ci -f compose.yaml -f compose.dev.yaml down

@@ -1,6 +1,6 @@
 # API e integración electrónica
 
-Base dev: `http://localhost:8000`. Base qa: `https://DOMINIO_API_QA`. Las rutas web terminan en `/`; la ruta de recepción RFID se define sin barra final. Este contrato es compartido por frontend, pagina-control (RFID) y Talentosito (consultas). El gateway RFID acepta las mismas rutas con base dev `http://localhost:3000` o qa `https://DOMINIO_API_QA/rfid`.
+Base dev: `http://localhost:8000`. Base qa: `https://DOMINIO_API_QA`. Las rutas web terminan en `/`; la ruta de recepción RFID se define sin barra final. Este contrato es compartido por frontend, iot (RFID) y Talentosito (consultas). El ESP32 de iot se conecta directamente a estas rutas: puerto 8000 de la máquina en dev y dominio HTTPS del backend en qa. No existe gateway ni panel RFID separado.
 
 ## Autenticación y permisos
 
@@ -58,13 +58,15 @@ Se conserva cada lectura con hora del servidor y se consolida una asistencia por
 
 `event_id` es opcional para compatibilidad; el firmware actual lo envía como identificador de arranque y secuencia. El par `device_id,event_id` es único: repetirlo devuelve la lectura original con `replayed: true` y no crea asistencia en otro día. Cambiar UID o ubicación del mismo evento devuelve 409. La respuesta incluye `ok`, `authorized`, `reading_id`, `attendance_date`, `attendance_created` y `usuario`. Una llave revocada o reasignada no vuelve a autorizar un evento anterior. Sin `event_id` se conserva cada solicitud como una lectura distinta, aunque sigue existiendo una sola asistencia diaria.
 
+El firmware reintenta hasta tres veces con el mismo `event_id` ante errores de transporte, 408, 429 o 5xx. Errores definitivos (incluidos 4xx distintos de 408/429) no se reintentan. Si no recibe una respuesta autorizada válida, mantiene la puerta cerrada; no almacena lecturas offline.
+
 - `GET /api/rfid/readings/`: auxiliar, últimas lecturas paginadas; filtro opcional `device_id`.
 - `GET /api/rfid/summary/`: auxiliar, conteos del día de Lima: `readings`, `allowed`, `denied`, `attendance`.
 - `GET /api/rfid/devices/`: administrador/auxiliar, último estado reportado por cada dispositivo con fecha del servidor.
 - `POST /api/puerta/estado`: dispositivo con `X-API-KEY`; cuerpo `{"device_id":"ESP32C6_RFID_01","location_id":"PUERTA_PRINCIPAL","state":"abierta"}`. Estados: `abierta` o `cerrada`.
 - `POST /api/puerta/cerrar`: compatibilidad, recibe los mismos identificadores y fuerza el estado reportado a `cerrada`.
 
-Los reportes de puerta no marcan asistencia ni envían comandos al ESP32. Describen el último estado comandado por el firmware, no prueban posición física ni paso de una persona. El panel no incorpora simulaciones que alteren la asistencia real.
+Los reportes de puerta no marcan asistencia ni envían comandos al ESP32. Describen el último estado comandado por el firmware, no prueban posición física ni paso de una persona.
 
 El administrador usa `/api/users/?role=estudiante&search=texto` para buscar cuentas y `PATCH /api/users/ID/` con `{"rfid_uid":"AABBCCDD"}` para asignar una llave; `null` la retira. Las llaves son únicas y se normalizan a mayúsculas. El auxiliar no puede modificar cuentas ni llaves. El navegador utiliza su sesión Bearer, nunca la clave del dispositivo.
 

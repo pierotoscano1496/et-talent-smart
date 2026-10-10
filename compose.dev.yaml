@@ -1,10 +1,4 @@
 services:
-  pagina-control:
-    build: ./pagina-control
-    ports:
-      - "${DEV_BIND_IP:-127.0.0.1}:3000:8080"
-    volumes:
-      - ./pagina-control/public:/usr/share/nginx/html:ro
   minio:
     build:
       context: ./deploy/storage

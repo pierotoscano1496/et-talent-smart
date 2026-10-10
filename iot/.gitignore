@@ -1,0 +1,9 @@
+# Configuración privada y artefactos del firmware
+secrets.h
+build/
+.pio/
+*.bin
+*.elf
+*.map
+*.hex
+*.log

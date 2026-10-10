@@ -10,7 +10,6 @@ cd "$root/releases/$release"
 exec 9>"$root/deploy.lock"
 flock -n 9 || { echo "Ya hay un despliegue en curso" >&2; exit 1; }
 export BACKEND_IMAGE="ghcr.io/$repository-backend:$release"
-export PAGINA_CONTROL_IMAGE="ghcr.io/$repository-pagina-control:$release"
 export TALENTOSITO_IMAGE="ghcr.io/$repository-talentosito:$release"
 export MINIO_IMAGE="ghcr.io/$repository-minio:$release"
 export MINIO_MC_IMAGE="ghcr.io/$repository-minio-mc:$release"
@@ -33,16 +32,16 @@ dc run --rm --no-deps backend python manage.py check --deploy --fail-level ERROR
 dc up -d --wait postgres minio
 dc run --rm --no-deps minio-init
 # Pause writers so the SQL and object backups refer to the same state.
-dc stop gateway pagina-control backend talentosito
+dc stop gateway backend talentosito
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 backup="$root/backups/$stamp-$release"
 mkdir -p "$backup"
 dc exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup/database.dump"
 dc run --rm -T --no-deps backend python manage.py backup_storage > "$backup/files.tar"
 dc run --rm --no-deps backend python manage.py migrate --noinput
-dc up -d --wait backend talentosito pagina-control gateway
+dc up -d --wait backend talentosito gateway
 # Persist image identities separately from secrets, for operator commands.
-printf 'BACKEND_IMAGE=%s\nTALENTOSITO_IMAGE=%s\nMINIO_IMAGE=%s\nMINIO_MC_IMAGE=%s\nPAGINA_CONTROL_IMAGE=%s\n' \
-  "$BACKEND_IMAGE" "$TALENTOSITO_IMAGE" "$MINIO_IMAGE" "$MINIO_MC_IMAGE" "$PAGINA_CONTROL_IMAGE" > release.env
+printf 'BACKEND_IMAGE=%s\nTALENTOSITO_IMAGE=%s\nMINIO_IMAGE=%s\nMINIO_MC_IMAGE=%s\n' \
+  "$BACKEND_IMAGE" "$TALENTOSITO_IMAGE" "$MINIO_IMAGE" "$MINIO_MC_IMAGE" > release.env
 ln -sfn "$root/releases/$release" "$root/current"
 echo "QA actualizado: $release. Respaldo: $backup"
