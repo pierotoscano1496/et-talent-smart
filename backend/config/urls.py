@@ -21,6 +21,7 @@ urlpatterns = [
     path("api/auth/me/", views.me),
     path("api/auth/logout/", views.logout),
     path("api/my-schedule/", views.my_schedule),
+    path("api/directory/", views.DirectoryList.as_view()),
     path("api/talentosito/context/", views.assistant_context),
     path("api/rfid/registro", rfid_views.register_reading),
     path("api/rfid/readings/", rfid_views.ReadingList.as_view()),

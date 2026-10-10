@@ -4,7 +4,7 @@
 
 Este documento complementa [features.md](features.md) con requisitos funcionales propuestos para la gestión de usuarios, horarios y asistencias. Los roles se definen en [info_usuarios.md](info_usuarios.md). Describe el comportamiento esperado; no implica que estas funciones estén implementadas. Las funciones de comunicados, conducta, notas y asistente descritas en ese archivo quedan fuera de estos casos de uso.
 
-En el prototipo actual, el acceso se simula en el frontend y el dashboard presenta información estática para estudiantes. Los casos siguientes requieren autenticación real, autorización por rol y almacenamiento persistente.
+La implementación actual utiliza autenticación real y persistencia en Django/PostgreSQL. El frontend presenta menús y formularios por rol para estos casos; los permisos se validan también en el servidor. La guía [ejecución dev](../../docs/ejecucion-dev.md) incluye cuentas ficticias para comprobar los recorridos.
 
 **Descripción breve del proyecto**: TalentSmart es un sistema tecnológico diseñado para modernizar la gestión escolar mediante la integración de la tecnología RFID y una aplicación web. Su objetivo es optimizar procesos como el registro de asistencia, la comunicación y la organización dentro de las instituciones educativas. Además, incorpora Talentosito, un asistente virtual que brinda apoyo, orientación y respuestas rápidas a estudiantes, docentes y padres de familia, haciendo que la experiencia educativa sea más eficiente, segura e innovadora.
 

@@ -19,9 +19,9 @@ node deploy/dev.mjs test
 
 Frontend: http://localhost:5173/et-talent-smart/ · API y administración: http://localhost:8000/admin/
 
-El acceso web usa cuentas reales creadas por el administrador. No hay contraseñas predeterminadas. La sesión se conserva solo en memoria y requiere volver a ingresar al recargar la página.
+El acceso web usa cuentas creadas por el administrador. En dev, `node deploy/dev.mjs seed` crea cuentas ficticias de prueba; sus credenciales y alcance están en [ejecución dev](docs/ejecucion-dev.md). Qa no recibe estas cuentas. La sesión se conserva solo en memoria y requiere volver a ingresar al recargar la página.
 
-El frontend ofrece inicio de sesión, consulta de horarios y asistencias, filtros y descarga CSV para auxiliar/docente. La gestión de usuarios, horarios e incidencias se encuentra disponible por API; el superusuario dispone también del admin de Django. Las demás pantallas de gestión específicas por rol y los módulos de notas/comunicados siguen pendientes.
+El frontend muestra menús y acciones según el rol: cuentas y llaves para el administrador; asignaciones académicas, horarios y eventos para el coordinador; asistencia y retiros tempranos para el auxiliar; horario, asistencia y justificaciones para el docente; información propia o de hijos para estudiantes y padres. Los permisos también se validan en Django. Los módulos de notas, conducta y comunicados quedan fuera de esta implementación de los casos CU-01 a CU-07.
 
 Talentosito atiende consultas de los alumnos. [iot](iot/README.md) es la capa IoT: firmware ESP32 + RC522, sensor y servo, conectado directamente a Django. Se carga por USB en la placa; no tiene web ni contenedor. La aplicación escolar permanece en frontend/backend y PostgreSQL es su fuente de datos.
 

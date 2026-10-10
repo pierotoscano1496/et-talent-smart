@@ -1,5 +1,13 @@
 services:
+  postgres:
+    networks: [inspection]
+    ports:
+      - "127.0.0.1:5432:5432"
   minio:
+    networks: [inspection]
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     build:
       context: ./deploy/storage
       target: server
@@ -26,11 +34,15 @@ services:
     environment:
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
       VITE_BASE_PATH: /et-talent-smart/
+      CHOKIDAR_USEPOLLING: "true"
     volumes:
       - ./frontend:/app
       - frontend-modules:/app/node_modules
     ports:
       - "127.0.0.1:5173:5173"
     networks: [app]
+networks:
+  inspection:
+
 volumes:
   frontend-modules:

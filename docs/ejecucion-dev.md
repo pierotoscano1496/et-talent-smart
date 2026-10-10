@@ -26,11 +26,57 @@ No editar `dev.env.example` para almacenar secretos. El archivo `dev.env` real e
 | Django admin | http://localhost:8000/admin/ |
 | API disponible | http://localhost:8000/api/health/ready/ |
 | Talentosito | http://localhost:8001/ |
-| PostgreSQL / MinIO | Red privada de Compose, sin puertos publicados |
+| PostgreSQL | `127.0.0.1:5432` |
+| MinIO API S3 | http://localhost:9000/ |
+| MinIO consola | http://localhost:9001/ |
+
+### Inspección de PostgreSQL y MinIO
+
+Para aplicar los puertos a un entorno dev que ya está iniciado, conservando sus datos:
+
+```sh
+node deploy/dev.mjs compose up -d --no-deps --wait postgres minio
+```
+
+Las credenciales están en el archivo privado `deploy/env/dev.env`:
+
+- PostgreSQL (por ejemplo, desde DBeaver o pgAdmin): host `127.0.0.1`, puerto `5432`, base `POSTGRES_DB`, usuario `POSTGRES_USER` y contraseña `POSTGRES_PASSWORD`.
+- Consola MinIO: abrir http://localhost:9001/ e ingresar con `MINIO_ROOT_USER` y `MINIO_ROOT_PASSWORD`.
+- Cliente S3: endpoint `http://localhost:9000`, access key `MINIO_ACCESS_KEY`, secret key `MINIO_SECRET_KEY` y bucket `MINIO_BUCKET`; utilizar direccionamiento por ruta (path-style).
+
+Estos puertos se publican únicamente en localhost para dev, incluso si `DEV_BIND_IP=0.0.0.0` permite conectar el ESP32 a las API. En qa, PostgreSQL y MinIO siguen sin puertos publicados. Los contenedores mantienen sus conexiones internas a `postgres:5432` y `minio:9000`.
+
+Compose dev conecta también PostgreSQL y MinIO a la red `inspection` para permitir la publicación local de puertos; conservan su conexión a la red interna `data`.
 
 En el admin, crear cuentas con correo único, contraseña, rol y estado activo. Crear grados/secciones y cursos; asignar a los estudiantes su aula y llave RFID. El login del frontend utiliza el correo, aunque el superusuario tenga un nombre de usuario diferente.
 
-Para datos de prueba, usar cuentas ficticias creadas en el admin o por la API. La suite de pruebas crea sus propios datos en una base temporal y no necesita poblar la base dev. No hay un usuario ni una contraseña de demostración incorporados.
+## Datos de prueba y acceso por rol
+
+Con el entorno dev iniciado, ejecutar desde la raíz:
+
+```sh
+node deploy/dev.mjs seed
+```
+
+El comando crea estas cuentas ficticias. La contraseña inicial de todas las cuentas **nuevas** es `TalentDev!2026`:
+
+| Correo | Rol / interfaz |
+| --- | --- |
+| `admin@demo.talentsmart.test` | Administrador: Usuarios, creación de cuentas y llaves RFID |
+| `coordinador@demo.talentsmart.test` | Coordinador Pabel Valeriano: Grados y secciones, Cursos, Horarios y Eventos |
+| `elvisp@demo.talentsmart.test` | Docente Elvis Perez: horario propio, asistencia de sus cursos, CSV y justificaciones |
+| `afachin@escuelatalentos.edu.pe` | Docente Anthony Fachín: horario propio, asistencia de sus cursos, CSV y justificaciones |
+| `cesar@demo.talentsmart.test` | Auxiliar César: asistencia general, CSV y retiros tempranos |
+| `tliao@demo.talentsmart.test` | Estudiante Tomiko: horario y asistencia propios |
+| `mtinco@demo.talentsmart.test` | Estudiante María: horario y asistencia propios |
+| `alopez@escuelatalentos.edu.pe` | Estudiante Andrés: horario y asistencia propios |
+| `alopez@gmail.com` | Padre de familia: asistencia de Alex, su hijo vinculado |
+
+Abrir http://localhost:5173/et-talent-smart/ e iniciar sesión con el correo. El administrador demo es una cuenta de aplicación: no es superusuario ni tiene acceso al admin de Django. El superusuario creado con `node deploy/dev.mjs admin` se conserva y también puede gestionar la web según su rol administrador.
+
+La carga incluye los grupos 4 A y 4 B del año actual, un curso de Matemática, un horario publicado con receso/almuerzo y una asistencia ficticia de Alex para el día actual. No asigna llaves RFID reales. Usa Usuarios para asignar una llave, Grados y secciones para cambiar el grupo y Horarios para editar/publicar los bloques.
+
+Puede repetirse: conserva las cuentas existentes, sus contraseñas, asignaciones y horarios editados. No se ejecuta automáticamente al arrancar ni forma parte del despliegue de qa. Exige settings de desarrollo, `DEBUG=True` y `APP_ENV=dev`; en qa se rechaza. La suite de pruebas usa una base temporal independiente de estos datos.
 
 ## Configuración de voz y electrónica
 
@@ -62,7 +108,7 @@ node deploy/dev.mjs compose exec backend python manage.py migrate
 npm --prefix frontend run build
 ```
 
-Las pruebas incluyen roles, sesiones expiradas, aislamiento de estudiantes, publicación de horarios, filtros, incidencias, RFID y voz sin llamadas al proveedor. `smoke_test` comprueba escritura/lectura/borrado contra el MinIO real con un objeto temporal único. El frontend y los servicios Python tienen recarga de código; los cambios de dependencias requieren reconstrucción.
+Las pruebas incluyen roles, sesiones expiradas, aislamiento de estudiantes, publicación de horarios, filtros, incidencias, RFID y voz sin llamadas al proveedor. `smoke_test` comprueba escritura/lectura/borrado contra el MinIO real con un objeto temporal único. El frontend y los servicios Python tienen recarga de código; los cambios de dependencias requieren reconstrucción. Compose dev activa `CHOKIDAR_USEPOLLING` para que Vite detecte también los cambios de archivos montados desde Windows.
 
 Si solo se necesita ejecutar pruebas unitarias de Django sin PostgreSQL iniciado:
 

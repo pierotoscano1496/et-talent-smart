@@ -16,11 +16,12 @@ from rest_framework.permissions import AllowAny, BasePermission
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
+from rest_framework.generics import ListAPIView
 from minio.error import S3Error
 from urllib3.exceptions import HTTPError
 from .models import User, AccessToken, Classroom, Course, Schedule, Attendance, RFIDReading, Incident, StoredFile
 from .serializers import (UserSerializer, ClassroomSerializer, CourseSerializer, ScheduleSerializer,
-                          AttendanceSerializer, IncidentSerializer, FileSerializer)
+                          AttendanceSerializer, IncidentSerializer, FileSerializer, DirectorySerializer, EventInput)
 from .storage import client as storage_client
 
 
@@ -112,6 +113,26 @@ class UserViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retriev
         return result
 
 
+class DirectoryList(ListAPIView):
+    serializer_class = DirectorySerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == User.Role.COORDINATOR:
+            role = self.request.query_params.get("role", User.Role.STUDENT)
+            if role not in (User.Role.STUDENT, User.Role.TEACHER):
+                raise PermissionDenied()
+            qs = User.objects.filter(role=role)
+        elif user.role == User.Role.ADMIN:
+            qs = User.objects.filter(role=User.Role.STUDENT)
+        else:
+            qs = visible_students(user)
+        search = self.request.query_params.get("search", "").strip()
+        if search:
+            qs = qs.filter(Q(first_name__icontains=search) | Q(last_name__icontains=search))
+        return qs.select_related("classroom").order_by("last_name", "first_name", "pk")
+
+
 class ClassroomViewSet(viewsets.ModelViewSet):
     queryset = Classroom.objects.all().order_by("year", "grade", "section")
     serializer_class = ClassroomSerializer
@@ -120,7 +141,10 @@ class ClassroomViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def assign(self, request, pk=None):
         classroom = self.get_object()
-        student = User.objects.filter(pk=request.data.get("student_id"), role=User.Role.STUDENT).first()
+        student_id = request.data.get("student_id")
+        if not str(student_id).isdigit():
+            raise ValidationError("Selecciona un estudiante válido.")
+        student = User.objects.filter(pk=student_id, role=User.Role.STUDENT).first()
         if not student:
             raise ValidationError("Estudiante no encontrado.")
         student.classroom = classroom
@@ -139,6 +163,32 @@ class ScheduleViewSet(viewsets.ModelViewSet):
     serializer_class = ScheduleSerializer
     permission_classes = [Coordinator]
 
+    @action(detail=False, methods=["post"])
+    def events(self, request):
+        serializer = EventInput(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        groups = Classroom.objects.filter(year=data["year"]).order_by("pk")
+        if not data["all_classrooms"]:
+            ids = set(data["classroom_ids"])
+            groups = groups.filter(pk__in=ids)
+            if groups.count() != len(ids):
+                raise ValidationError("Los grupos deben pertenecer al año seleccionado.")
+        if not groups.exists():
+            raise ValidationError("No hay grados y secciones para este evento.")
+        block = {key: serializer.data[key] for key in ("day", "start", "end", "title", "room") if key in serializer.data}
+        block["kind"] = "evento"
+        with transaction.atomic():
+            schedules = []
+            for group in groups:
+                schedule, _ = Schedule.objects.get_or_create(classroom=group)
+                schedule = Schedule.objects.select_for_update().get(pk=schedule.pk)
+                if block not in schedule.draft:
+                    schedule.draft = [*schedule.draft, block]
+                    schedule.save(update_fields=["draft"])
+                schedules.append(schedule)
+        return Response(ScheduleSerializer(schedules, many=True).data)
+
     @action(detail=True, methods=["post"])
     def publish(self, request, pk=None):
         with transaction.atomic():
@@ -150,6 +200,16 @@ class ScheduleViewSet(viewsets.ModelViewSet):
                 if any(block["day"] == other["day"] and block["start"] < other["end"] and other["start"] < block["end"]
                        for other in blocks[i + 1:]):
                     raise ValidationError("Hay bloques superpuestos. Corrige el borrador antes de publicar.")
+            teachers = dict(Course.objects.values_list("id", "teacher_id"))
+            others = Schedule.objects.filter(classroom__year=schedule.classroom.year).exclude(pk=schedule.pk).exclude(published=None)
+            for block in blocks:
+                teacher = teachers.get(block.get("course_id"))
+                if teacher and any(
+                    teachers.get(other.get("course_id")) == teacher and block["day"] == other["day"]
+                    and block["start"] < other["end"] and other["start"] < block["end"]
+                    for other_schedule in others for other in other_schedule.published
+                ):
+                    raise ValidationError("El docente tiene otra clase publicada en ese intervalo.")
             schedule.published = blocks
             schedule.published_at = timezone.now()
             schedule.save(update_fields=["published", "published_at"])
@@ -169,8 +229,9 @@ def personal_schedules(user):
         blocks = schedule.published
         if user.role == User.Role.TEACHER:
             blocks = [b for b in blocks if b.get("course_id") in own_courses or b["kind"] != "curso"]
-        course_names = dict(Course.objects.filter(classroom=schedule.classroom).values_list("id", "name"))
-        blocks = [{**b, "title": b.get("title") or course_names.get(b.get("course_id"), b["kind"])} for b in blocks]
+        courses = {course.pk: course for course in Course.objects.filter(classroom=schedule.classroom).select_related("teacher")}
+        blocks = [{**b, "title": b.get("title") or (courses[b["course_id"]].name if b.get("course_id") in courses else b["kind"]),
+                   "teacher": courses[b["course_id"]].teacher.get_full_name() if b.get("course_id") in courses else ""} for b in blocks]
         result.append({"classroom": str(schedule.classroom), "blocks": blocks, "published_at": schedule.published_at})
     return result
 

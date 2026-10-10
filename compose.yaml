@@ -44,6 +44,7 @@ services:
 
   backend:
     environment:
+      APP_ENV: ${APP_ENV:?Required}
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:?Required}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Required}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?Required}

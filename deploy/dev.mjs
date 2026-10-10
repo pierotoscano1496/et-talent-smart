@@ -27,6 +27,9 @@ switch (command) {
   case 'admin':
     run('exec', 'backend', 'python', 'manage.py', 'createsuperuser');
     break;
+  case 'seed':
+    run('exec', '-T', 'backend', 'python', 'manage.py', 'seed_dev');
+    break;
   case 'stop':
     run('down');
     break;
@@ -34,7 +37,7 @@ switch (command) {
     run('logs', '--tail', '100', ...args);
     break;
   default:
-    if (command !== 'compose') throw new Error('Uso: node deploy/dev.mjs start|test|admin|stop|logs|compose [argumentos]');
+    if (command !== 'compose') throw new Error('Uso: node deploy/dev.mjs start|test|admin|seed|stop|logs|compose [argumentos]');
     run(...args);
 }
 

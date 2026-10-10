@@ -92,9 +92,9 @@ La siguiente distribución es una propuesta, no una comprobación de disponibili
 | Django | 8000 | `127.0.0.1:8000` | A través del proxy HTTPS; sin publicación directa general |
 | Talentosito | 8000, en su propio contenedor | Puerto del host 8001; acceso LAN configurable para el ESP32 | A través del proxy HTTPS y autenticación del dispositivo |
 | iot | No aplica; cliente IoT | Consume Django en 8000, sin servidor propio | Consume /api/rfid/registro mediante HTTPS, sin puerto propio |
-| PostgreSQL | 5432 | Sin publicación por defecto | Solo red privada de datos |
-| MinIO API | 9000 | Solo red de contenedores | Solo red privada de datos |
-| MinIO consola | 9001, configurado explícitamente | Publicación opcional en loopback | Sin acceso público; administración mediante acceso restringido |
+| PostgreSQL | 5432 | `127.0.0.1:5432` para inspección local | Solo red privada de datos |
+| MinIO API | 9000 | `127.0.0.1:9000` para clientes S3 locales | Solo red privada de datos |
+| MinIO consola | 9001, configurado explícitamente | `127.0.0.1:9001` para administración local | Sin acceso público; administración mediante acceso restringido |
 
 Antes de implementar qa se debe verificar que el plan de Hostinger permite Docker Engine y Compose y que se dispone de acceso administrativo al servidor. También se deben inspeccionar los puertos, el proxy y la gestión de certificados existentes.
 

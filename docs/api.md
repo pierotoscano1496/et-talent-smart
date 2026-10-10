@@ -11,11 +11,13 @@ No se usa autenticación por cookies en la API del navegador: Pages y Django pue
 | Ruta | Operación y alcance |
 | --- | --- |
 | `/api/users/` | Administrador: crear, listar, consultar y actualizar cuentas, estado y llaves |
+| `/api/directory/` | Directorio mínimo sin credenciales ni RFID: coordinador consulta estudiantes/docentes; auxiliar/docente/estudiante/padre reciben solo los estudiantes de su alcance |
 | `/api/classrooms/` | Coordinador: gestionar año, grado y sección |
 | `/api/classrooms/ID/assign/` | Coordinador: POST con `student_id` para asignar estudiante |
 | `/api/courses/` | Coordinador: nombre, aula/grupo (`classroom`) y docente (`teacher`) |
 | `/api/schedules/` | Coordinador: crear/editar borradores |
 | `/api/schedules/ID/publish/` | Coordinador: POST para validar y publicar |
+| `/api/schedules/events/` | Coordinador: añadir un evento a los borradores de algunos grupos o todos los de un año |
 | `/api/my-schedule/` | Estudiante/docente: publicaciones correspondientes |
 | `/api/attendance/` | Consulta diaria según el alcance del usuario |
 | `/api/attendance/export/` | Auxiliar/docente: CSV completo con los mismos filtros |
@@ -45,6 +47,10 @@ Ejemplo de borrador:
 `day` va de 0 (lunes) a 6 (domingo). Los bloques deben estar entre 07:30 y 16:30. Se aceptan borradores con superposiciones para su corrección, pero se rechaza su publicación. Editar un borrador no altera la publicación vigente. Los eventos usan `kind: "evento"` y `title`; se registran en el horario de cada grado/sección destinatario.
 
 Las incidencias reciben `student`, `date`, `kind`, `reason` opcional y `exit_time` obligatorio solo para retiro temprano. El docente registra `falta_justificada`; el auxiliar registra `retiro_temprano`. El autor y la fecha de creación son del servidor. No hay adjuntos ni aprobación.
+
+El directorio admite `search` por nombre y, para coordinadores, `role=estudiante` (por defecto) o `role=docente`. Devuelve identidad, rol, estado y grupo académico; no concede permisos para editar cuentas. La API de usuarios rechaza la asignación de `classroom`: corresponde al coordinador mediante `/api/classrooms/ID/assign/`. Los padres pueden vincular únicamente cuentas de estudiantes mediante `children`.
+
+Los eventos reciben `year`, `classroom_ids` o `all_classrooms: true`, `day`, `start`, `end`, `title` y `room` opcional. Se incorporan como bloques del horario semanal anual, sin cambiar las publicaciones vigentes ni sustituir clases automáticamente. Deben revisarse y publicarse por grupo. Un evento idéntico ya presente no se añade otra vez. La publicación rechaza superposiciones dentro del grupo y entre clases publicadas del mismo docente en el mismo año.
 
 ## RFID
 

@@ -1,5 +1,16 @@
 # Validación de la implementación
 
+## Interfaces por rol y datos dev — 10 de octubre de 2026
+
+- Carga `seed_dev` ejecutada en PostgreSQL dev: administrador, coordinador y cuentas de apoyo para docente, auxiliar, estudiantes y padre. Datos ficticios documentados en [ejecución dev](ejecucion-dev.md); sin sobrescribir el superusuario existente.
+- 28 pruebas Django correctas, incluidas la exclusividad del coordinador para asignar grupos, directorios limitados por rol, unicidad de correo, publicación sin cruces de docentes, eventos sobre borradores y rechazo de la carga de prueba en qa. La carga repetida conserva contraseñas y borradores editados.
+- 14 pruebas Talentosito correctas y comprobación real de archivos privados en PostgreSQL/MinIO correcta.
+- TypeScript y compilación Vite correctos.
+- Verificación en Edge sin ventana contra dev: creación/edición de cuentas y llaves, asignación de estudiante, curso/docente, guardado/publicación de horario, rechazo de superposición, evento extracurricular, retiro temprano, CSV, justificación, vistas de padre/estudiante y navegación móvil. Menús comprobados para los seis roles. Datos temporales de esos recorridos eliminados; datos dev solicitados conservados.
+- Recarga del frontend en Docker sobre Windows comprobada con `CHOKIDAR_USEPOLLING`.
+
+Los eventos se incorporan al horario semanal anual; no se implementó un calendario de eventos de fecha única. Notas, conducta y comunicados siguen fuera del alcance de CU-01 a CU-07. No se desplegó esta actualización en qa.
+
 Verificaciones realizadas localmente el 8 de octubre de 2026:
 
 | Comprobación | Resultado |
