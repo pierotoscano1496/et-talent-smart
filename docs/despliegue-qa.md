@@ -21,7 +21,7 @@ La contraseña inicial de PostgreSQL se aplica al crear su volumen: para rotarla
 
 ## Dominio y HTTPS
 
-Asignar un dominio de API, por ejemplo `api-qa.example.org`, al VPS. Integrarlo en el proxy TLS existente usando `deploy/nginx/host.example.conf` como referencia, comprobar la configuración antes de recargar y usar un certificado válido.
+Asignar un dominio de API, por ejemplo `api-talentsmart-qa.vexaperu.com`, al VPS. Integrarlo en el proxy TLS existente usando `deploy/nginx/host.example.conf` como referencia, comprobar la configuración antes de recargar y usar un certificado válido.
 
 El gateway de este proyecto publica **solo `127.0.0.1:9083`**; enruta `/voice/` a Talentosito y el resto a Django. No abre 80/443 ni administra los certificados del servidor. El proxy del host debe reenviar `Host` y establecer `X-Forwarded-Proto: https`. PostgreSQL, MinIO y su consola no publican puertos.
 
