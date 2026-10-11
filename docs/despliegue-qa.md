@@ -21,6 +21,30 @@ La contraseña inicial de PostgreSQL se aplica al crear su volumen: para rotarla
 
 ## Dominio y HTTPS
 
+El proxy existente está en el host: `/etc/nginx/sites-available/chambita-api-qa` dirige Chambita a `127.0.0.1:9082`. Talent Smart utiliza un sitio independiente y `127.0.0.1:9083`. Nginx comparte 80/443 entre dominios mediante `server_name`.
+
+1. En la zona DNS de `vexaperu.com`, crear un registro A con nombre `api-talentsmart-qa` y valor igual a la IP pública del VPS. Si existe un AAAA, debe apuntar al IPv6 correcto del mismo servidor.
+2. Comprobar que el dominio resuelve al VPS y que HTTP 80 y HTTPS 443 están permitidos en los firewalls.
+3. Copiar `deploy/nginx/host-http.example.conf` al VPS como `/tmp/talentsmart-api-qa.conf`. Esta plantilla HTTP permite emitir el primer certificado sin referenciar archivos TLS inexistentes.
+4. En el VPS, ejecutar:
+
+```sh
+sudo install -m 644 /tmp/talentsmart-api-qa.conf /etc/nginx/sites-available/talentsmart-api-qa
+sudo ln -s /etc/nginx/sites-available/talentsmart-api-qa /etc/nginx/sites-enabled/talentsmart-api-qa
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d api-talentsmart-qa.vexaperu.com --redirect
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot renew --dry-run --cert-name api-talentsmart-qa.vexaperu.com
+```
+
+Crear el enlace únicamente si no existe. Certbot modifica el sitio para instalar HTTPS y la redirección. `host.example.conf` sirve como referencia del resultado final, después de emitir el certificado; no hace falta reemplazar el sitio generado por Certbot.
+
+Antes de levantar el gateway, la ruta de aplicación puede responder 502; esto no impide el challenge de Certbot. Tras el despliegue, comprobar `https://api-talentsmart-qa.vexaperu.com/api/health/ready/`.
+
+En `/etc/talentsmart/qa.env`, usar `DJANGO_ALLOWED_HOSTS=api-talentsmart-qa.vexaperu.com,localhost,127.0.0.1,backend`, `CSRF_TRUSTED_ORIGINS=https://api-talentsmart-qa.vexaperu.com` y `QA_HTTP_PORT=9083`. En los entornos GitHub `qa` y `github-pages`, configurar `QA_API_URL=https://api-talentsmart-qa.vexaperu.com`.
+
+Los respaldos propios de Talent Smart se guardan en `/opt/talentsmart/backups`; no es una ruta de Nginx ni se publica por HTTP.
+
 Asignar un dominio de API, por ejemplo `api-talentsmart-qa.vexaperu.com`, al VPS. Integrarlo en el proxy TLS existente usando `deploy/nginx/host.example.conf` como referencia, comprobar la configuración antes de recargar y usar un certificado válido.
 
 El gateway de este proyecto publica **solo `127.0.0.1:9083`**; enruta `/voice/` a Talentosito y el resto a Django. No abre 80/443 ni administra los certificados del servidor. El proxy del host debe reenviar `Host` y establecer `X-Forwarded-Proto: https`. PostgreSQL, MinIO y su consola no publican puertos.
